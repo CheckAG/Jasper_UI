@@ -1,0 +1,106 @@
+/* ============================================================
+   JASPER Design Tokens — Light theme only
+   Source: CheckAg Product Design · UX Strategy V0.4
+   ============================================================ */
+
+:root {
+  /* --- Signal & status colours --- */
+  --signal:       #1f5dff;
+  --signal-soft:  #e6ecff;
+  --accent-ok:    #1f9d55;
+  --accent-warn:  #d97706;
+  --accent-alarm: #c0322d;
+  --accent-violet:#6b4ee0;
+
+  /* --- Surfaces (light theme — permanent) --- */
+  --bg:      #fafaf9;
+  --paper:   #ffffff;
+  --ink:     #0f1115;
+  --ink-2:   #2b2f37;
+  --muted:   #6b7280;
+  --line:    #e7e6e3;
+  --line-2:  #d8d6d1;
+  --tint:    #f3f2ee;
+  --tint-2:  #ecebe6;
+
+  /* --- Typography --- */
+  --font-sans:  "Geist", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:  "Geist Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  --font-serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+
+  /* --- Density: Standard (default) --- */
+  --gap:        10px;
+  --pad:        12px;
+  --font-body:  13.5px;
+  --font-small: 12px;
+  --row-h:      32px;
+  --radius-sm:  7px;
+  --radius-md:  10px;
+  --radius-lg:  14px;
+}
+
+/* --- Density overrides --- */
+[data-density="comfort"] {
+  --gap:       16px;
+  --pad:       16px;
+  --font-body: 15px;
+  --font-small:13px;
+  --row-h:     40px;
+}
+[data-density="lab"] {
+  --gap:       6px;
+  --pad:       8px;
+  --font-body: 12px;
+  --font-small:11px;
+  --row-h:     28px;
+}
+
+/* --- Spectrum palette — 12 perceptually-uniform hues (oklch L≈0.62, c≈0.16) --- */
+:root {
+  --series-1:  #1f5dff;
+  --series-2:  #0891b2;
+  --series-3:  #059669;
+  --series-4:  #d97706;
+  --series-5:  #c0322d;
+  --series-6:  #7c3aed;
+  --series-7:  #db2777;
+  --series-8:  #0369a1;
+  --series-9:  #047857;
+  --series-10: #b45309;
+  --series-11: #9333ea;
+  --series-12: #0e7490;
+}
+
+/* --- Status semantic --- */
+:root {
+  --status-live:  #1f5dff;
+  --status-ok:    #1f9d55;
+  --status-drift: #d97706;
+  --status-fault: #c0322d;
+}
+
+/* --- Global reset (tokens.css owns the body style) --- */
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11", "tnum";
+  font-size: var(--font-body);
+  letter-spacing: -0.005em;
+  line-height: 1.5;
+}
+
+/* Utility classes */
+.mono   { font-family: var(--font-mono); }
+.serif  { font-family: var(--font-serif); }
+.muted  { color: var(--muted); }
+.ink-2  { color: var(--ink-2); }
+.signal { color: var(--signal); }
+
+/* Card pattern */
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
