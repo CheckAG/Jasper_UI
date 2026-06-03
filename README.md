@@ -1,5 +1,5 @@
 ## How to run?
-GTK_EXE_PREFIX=/usr LD_PRELOAD=/lib/x86_64-linux-gnu/libpthread.so.0 npm run tauri dev
+./run.sh
 
 
 # React + TypeScript + Vite
