@@ -4,24 +4,24 @@
    ============================================================ */
 
 :root {
-  /* --- Signal & status colours --- */
-  --signal:       #1f5dff;
-  --signal-soft:  #e6ecff;
-  --accent-ok:    #1f9d55;
-  --accent-warn:  #d97706;
-  --accent-alarm: #c0322d;
-  --accent-violet:#6b4ee0;
-
-  /* --- Surfaces (light theme — permanent) --- */
-  --bg:      #fafaf9;
-  --paper:   #ffffff;
-  --ink:     #0f1115;
-  --ink-2:   #2b2f37;
-  --muted:   #6b7280;
-  --line:    #e7e6e3;
-  --line-2:  #d8d6d1;
-  --tint:    #f3f2ee;
-  --tint-2:  #ecebe6;
+  /* ===== Active theme: Warm Sand ===== */
+  --signal:       #4b54c9;   /* warm indigo accent */
+  --signal-soft:  #ecebfb;
+  --accent-ok:    #3f9168;
+  --accent-warn:  #c8791f;
+  --accent-alarm: #bd4a3a;
+  --accent-violet:#7a5cd0;
+  --bg:      #f5efe6;
+  --paper:   #fffdf8;
+  --ink:     #241f19;
+  --ink-rgb: 36,31,25;
+  --ink-2:   #4a4239;
+  --muted:   #8c8174;
+  --line:    #e8ddcd;
+  --line-2:  #d9cdb8;
+  --tint:    #efe7d9;
+  --tint-2:  #e7ddcc;
+  /* ===== end theme ===== */
 
   /* --- Typography --- */
   --font-sans:  "Geist", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;

@@ -17,16 +17,11 @@ export function TopBar() {
       flexShrink: 0,
     }}>
       {/* Brand */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{
-          width: 22, height: 22, borderRadius: 6,
-          background: 'conic-gradient(from 200deg, #1f5dff, #06b6c4, #6b4ee0, #1f5dff)',
-          boxShadow: 'inset 0 0 0 2px var(--paper)', flexShrink: 0,
-        }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
         <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: '-0.01em' }}>JASPER</span>
-        <span className="mono" style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-          by CheckAg
-        </span>
+        <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>by</span>
+        <img src="/checkag.png" alt="CheckAg"
+          style={{ height: 19, width: 'auto', display: 'block', flexShrink: 0 }} />
       </div>
 
       {/* Session pill */}
