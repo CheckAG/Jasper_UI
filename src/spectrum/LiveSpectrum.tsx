@@ -93,11 +93,16 @@ export function LiveSpectrum({
     const xPad = 48, yPadTop = 20, yPadBot = 28;
     let W = size.w, H = size.h;
 
-    const muted      = '#7a808a';
-    const grid       = 'rgba(15,17,21,0.05)';
-    const gridStrong = 'rgba(15,17,21,0.10)';
-    const accentLive = '#1f5dff';
-    const accentPrev = 'rgba(15,17,21,0.18)';
+    // Pull chart colours from the theme tokens so the canvas matches the rest
+    // of the UI (and re-themes automatically with tokens.css).
+    const css = getComputedStyle(document.documentElement);
+    const tok = (name: string, fallback: string) => (css.getPropertyValue(name).trim() || fallback);
+    const muted      = tok('--muted', '#7a808a');
+    const inkRgb     = tok('--ink-rgb', '15,17,21');
+    const grid       = `rgba(${inkRgb},0.05)`;
+    const gridStrong = `rgba(${inkRgb},0.10)`;
+    const accentLive = tok('--signal', '#1f5dff');
+    const accentPrev = `rgba(${inkRgb},0.18)`;
 
     function fit() {
       const host = canvas!.parentElement!;
@@ -215,13 +220,13 @@ export function LiveSpectrum({
         const idx  = Math.round((xVal - xMin) / (xMax - xMin) * (live.xs.length - 1));
         const xs = live.xs[idx], ys = live.ys[idx];
         const px = xPx(xs), py = yPx(ys);
-        ctx.strokeStyle = 'rgba(15,17,21,0.25)'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+        ctx.strokeStyle = `rgba(${inkRgb},0.28)`; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(px, yPadTop); ctx.lineTo(px, H - yPadBot);
         ctx.moveTo(xPad, py); ctx.lineTo(W - 14, py); ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = accentLive;
         ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = tok('--paper', '#fff');
         ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill();
         onCursorRef.current?.({
           x: xs, y: ys,
