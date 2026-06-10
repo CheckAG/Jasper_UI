@@ -1,5 +1,5 @@
 mod state;
-mod instrument;
+pub mod instrument; // pub: integration tests drive SerialDriver against the protocol simulator
 mod storage;
 mod commands;
 

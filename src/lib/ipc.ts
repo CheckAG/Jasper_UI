@@ -67,12 +67,16 @@ function toRustParams(p: AcqParams) {
 }
 
 // Rust SpectrumFrame → TypeScript Spectrum
-function frameToSpectrum(frame: { xs: number[]; ys: number[]; timestamp: number }, params: AcqParams): Spectrum {
+function frameToSpectrum(
+  frame: { xs: number[]; ys: number[]; timestamp: number; units?: string },
+  params: AcqParams,
+): Spectrum {
   return {
     xs: new Float32Array(frame.xs),
     ys: new Float32Array(frame.ys),
     timestamp: frame.timestamp,
     params,
+    units: frame.units,
   };
 }
 
@@ -437,11 +441,12 @@ export const ipc = {
   onSpectrumFrame: (cb: (s: Spectrum) => void): (() => void) => {
     if (!IS_TAURI) return () => {};
     let unlisten: (() => void) | null = null;
-    listen<{ xs: number[]; ys: number[]; mode: string; timestamp: number }>('spectrum-frame', event => {
+    listen<{ xs: number[]; ys: number[]; mode: string; units: string; timestamp: number }>('spectrum-frame', event => {
       cb({
         xs: new Float32Array(event.payload.xs),
         ys: new Float32Array(event.payload.ys),
         timestamp: event.payload.timestamp,
+        units: event.payload.units,
         // Only `mode` matters downstream — LiveSpectrum uses store params for the
         // rest and discards frames whose mode no longer matches the UI.
         params: {

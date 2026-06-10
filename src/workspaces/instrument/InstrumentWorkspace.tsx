@@ -14,14 +14,23 @@ function CalibrationPanel() {
 
   async function runCal(key: 'dark' | 'reference' | 'xcal') {
     setLoading(l => ({ ...l, [key]: true }));
-    const result = key === 'xcal'
-      ? await ipc.calibrateXcal()
-      : key === 'dark'
-        ? await ipc.calibrateDark(params)
-        : await ipc.calibrateReference(params);
-    setRefState({ [key]: result.status as CalStatus });
-    if ('rms' in result && result.rms) setRms(r => ({ ...r, [key]: result.rms! }));
-    setLoading(l => ({ ...l, [key]: false }));
+    try {
+      const result = key === 'xcal'
+        ? await ipc.calibrateXcal()
+        : key === 'dark'
+          ? await ipc.calibrateDark(params)
+          : await ipc.calibrateReference(params);
+      setRefState({ [key]: result.status as CalStatus });
+      if ('rms' in result && result.rms) setRms(r => ({ ...r, [key]: result.rms! }));
+      if ('warn' in result && result.warn) console.warn(`calibration ${key}: ${result.warn}`);
+    } catch (e) {
+      console.error(`calibration ${key} failed:`, e);
+      setRefState({ [key]: 'fault' });
+    } finally {
+      // Dark/reference capture pauses the acquisition stream — resume it
+      if (key !== 'xcal') ipc.startAcquisition(params).catch(() => {});
+      setLoading(l => ({ ...l, [key]: false }));
+    }
   }
 
   const allOk = refState.dark === 'ok' && refState.reference === 'ok' && refState.xcal === 'ok';

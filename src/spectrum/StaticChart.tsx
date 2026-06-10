@@ -60,17 +60,21 @@ export function StaticChart({ xs, series, height = 260 }: StaticChartProps) {
     // Grid
     ctx.strokeStyle = 'rgba(15,17,21,0.06)'; ctx.lineWidth = 1;
     ctx.font = '10px "Geist Mono", monospace'; ctx.fillStyle = '#7a808a';
-    [400, 800, 1200, 1600, 2000].forEach(x => {
-      if (x < xMin || x > xMax) return;
+    // Ticks derive from the data's x range (mock NIR and real device differ)
+    const rawStep = (xMax - xMin) / 5;
+    const mag = Math.pow(10, Math.floor(Math.log10(Math.max(rawStep, 1e-12))));
+    const xStep = (rawStep / mag >= 5 ? 5 : rawStep / mag >= 2 ? 2 : 1) * mag;
+    for (let x = Math.ceil(xMin / xStep) * xStep; x <= xMax + 1e-9; x += xStep) {
       const px = xPx(x);
       ctx.beginPath(); ctx.moveTo(px, yPadTop); ctx.lineTo(px, H - yPadBot); ctx.stroke();
-      ctx.textAlign = 'center'; ctx.fillText(String(x), px, H - 8);
-    });
+      ctx.textAlign = 'center'; ctx.fillText(String(Math.round(x)), px, H - 8);
+    }
     for (let i = 0; i <= 4; i++) {
       const py = yPadTop + (i / 4) * (H - yPadTop - yPadBot);
       ctx.beginPath(); ctx.moveTo(xPad, py); ctx.lineTo(W - 14, py); ctx.stroke();
       const val = yMax - i * yRange / 4;
-      ctx.textAlign = 'right'; ctx.fillText(val.toFixed(2), xPad - 4, py + 3);
+      ctx.textAlign = 'right';
+      ctx.fillText(yRange >= 20 ? String(Math.round(val)) : val.toFixed(2), xPad - 4, py + 3);
     }
 
     // Series

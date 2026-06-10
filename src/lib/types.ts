@@ -30,6 +30,10 @@ export interface Spectrum {
   ys:        Float32Array;
   timestamp: number;
   params:    AcqParams;
+  /** What ys actually are (from the backend pipeline):
+   *  "counts" raw · "counts_d" dark-subtracted · "ratio" T/R · "abs" absorbance.
+   *  Empty/undefined → mock-styled data shaped for params.mode. */
+  units?:    string;
 }
 
 // --- Captured spectrum ---

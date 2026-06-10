@@ -31,6 +31,8 @@ export interface FrameDTO {
   xs:        number[];
   ys:        number[];
   mode:      string;
+  /** "" mock-styled · "counts" raw · "counts_d" dark-subtracted · "ratio" · "abs" */
+  units:     string;
   timestamp: number;
 }
 

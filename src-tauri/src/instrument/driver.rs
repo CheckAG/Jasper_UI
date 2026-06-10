@@ -36,11 +36,18 @@ impl Default for AcqParams {
 /// One spectrum frame emitted to the frontend.
 /// `xs` is stable for a given instrument — frontend may cache it.
 /// `mode` lets the frontend discard frames left over from a previous mode.
+/// `units` says what `ys` actually are, so the GUI labels honestly:
+///   ""         — mock-styled data shaped for the requested mode
+///   "counts"   — raw device counts (no calibration applied yet)
+///   "counts_d" — dark-subtracted counts
+///   "ratio"    — (S−D)/(R−D), for transmittance/reflectance
+///   "abs"      — −log10 of that ratio
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SpectrumFrame {
     pub xs:        Vec<f32>,
     pub ys:        Vec<f32>,
     pub mode:      String,
+    pub units:     String,
     pub timestamp: u64,
 }
 
