@@ -33,9 +33,9 @@
       "title": "TCD1304 frame codec: envelope, CRC-16/CCITT, resyncing reader",
       "type": "feature",
       "priority": "P0",
-      "status": "todo",
+      "status": "in-review",
       "issue": 3,
-      "branch": null,
+      "branch": "feature/3_tcd1304-frame-codec",
       "depends_on": [],
       "summary": "Pure parsing/encoding layer for protocol v1. Content-addressed framing, no position-based reads.",
       "files": [
