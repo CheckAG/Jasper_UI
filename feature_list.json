@@ -53,9 +53,9 @@
       "title": "Replace serial.rs with a TCD1304 SpectrumDriver",
       "type": "feature",
       "priority": "P0",
-      "status": "todo",
+      "status": "in-review",
       "issue": 4,
-      "branch": null,
+      "branch": "feature/4_tcd1304-driver",
       "depends_on": [
         "E2a"
       ],

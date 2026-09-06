@@ -204,3 +204,146 @@ fn a_capture_takes_about_two_integration_periods() {
         "a capture should cost about 2 x 50 ms, took {elapsed:?}"
     );
 }
+
+// ── The driver itself, not just the codec ────────────────────────────────────
+
+use jasper_lib::instrument::driver::{AcqParams, SpectrumDriver};
+use jasper_lib::instrument::tcd1304::Tcd1304Driver;
+
+fn params(integration: u32) -> AcqParams {
+    AcqParams { integration, ..Default::default() }
+}
+
+#[test]
+fn driver_handshakes_and_scans() {
+    let (_sim, pty) = spawn_sim(&["--scene", "lines", "--no-delay"]);
+    let mut drv = Tcd1304Driver::new(pty);
+
+    drv.connect("").expect("handshake");
+
+    let meta = drv.device_metadata().expect("connected, so metadata is cached");
+    assert_eq!(meta.model, "TCD1304");
+    assert_eq!(meta.serial.len(), 16);
+    assert_eq!(meta.firmware, "0.1");
+    assert_eq!(meta.protocol_version, 1);
+    assert_eq!(meta.pixels, PIXELS as u32);
+    assert_eq!((meta.integ_min_ms, meta.integ_max_ms), (8, 10_000));
+    assert_eq!(meta.max_intensity, 32_767);
+    assert_eq!(meta.sensor, "TCD1304AP");
+
+    let frame = drv.scan(&params(25)).expect("scan");
+    assert_eq!(frame.ys.len(), PIXELS);
+    assert_eq!(frame.xs.len(), PIXELS);
+    assert_eq!(frame.units, "counts");
+    // xs is the pixel index until a wavelength calibration exists (E5).
+    assert_eq!(frame.xs[0], 0.0);
+    assert_eq!(frame.xs[PIXELS - 1], (PIXELS - 1) as f32);
+    assert!(frame.ys.iter().any(|&y| y > 3000.0), "the lines scene should show peaks");
+
+    let after = drv.device_metadata().unwrap();
+    assert!(after.last_seq > 0, "the header's seq should be recorded");
+    assert_eq!(after.dropped_frames, 0);
+
+    drv.disconnect();
+    assert_eq!(drv.device_list()[0].status, "offline");
+}
+
+#[test]
+fn driver_reports_the_clamped_integration_the_device_applied() {
+    let (_sim, pty) = spawn_sim(&["--scene", "flat", "--no-delay"]);
+    let drv = Tcd1304Driver::new(pty);
+    // 3 ms is below the device floor; the scan must still succeed, using the
+    // clamped value the ACK reported rather than what was asked for.
+    let frame = drv.scan(&params(3)).expect("scan below the floor still works");
+    assert_eq!(frame.ys.len(), PIXELS);
+}
+
+#[test]
+fn driver_opens_lazily_without_an_explicit_connect() {
+    let (_sim, pty) = spawn_sim(&["--scene", "flat", "--no-delay"]);
+    let drv = Tcd1304Driver::new(pty);
+    assert!(drv.device_metadata().is_none(), "nothing cached before the first use");
+    drv.scan(&params(8)).expect("scan should open the port on demand");
+    assert!(drv.device_metadata().is_some());
+}
+
+#[test]
+fn driver_refuses_a_device_that_is_not_a_tcd1304() {
+    // A pty that holds the port open but never replies. The handshake must
+    // fail rather than hang or half-connect.
+    let (_sim, pty) = spawn_sim(&["--mute"]);
+    let mut drv = Tcd1304Driver::new(pty);
+    let err = drv.connect("").expect_err("a silent port is not a spectrometer");
+    assert!(err.contains("timed out"), "unexpected error: {err}");
+}
+
+#[test]
+fn driver_declines_telemetry_rather_than_inventing_it() {
+    let (_sim, pty) = spawn_sim(&["--scene", "flat", "--no-delay"]);
+    let drv = Tcd1304Driver::new(pty);
+    // This hardware has no temperature, lamp hours, drift or headroom. Zeros
+    // would be indistinguishable from real readings in the UI.
+    assert!(drv.telemetry().is_err());
+    assert!(drv.calibrate_xcal().is_err(), "wavelength calibration is E5");
+}
+
+// ── Real hardware ────────────────────────────────────────────────────────────
+//
+// Ignored by default so `cargo test` stays green without a board. Run with:
+//
+//     JASPER_PORT=/dev/ttyACM0 cargo test --test tcd1304_sim -- --ignored --nocapture
+//
+// The simulator can only ever prove we agree with our own reading of the spec.
+// This proves we agree with the firmware.
+
+#[test]
+#[ignore = "requires a TCD1304 on JASPER_PORT"]
+fn real_hardware_handshake_and_capture() {
+    let port = std::env::var("JASPER_PORT")
+        .expect("set JASPER_PORT=/dev/ttyACM0 (or wherever the board enumerated)");
+    let mut drv = Tcd1304Driver::new(port);
+
+    drv.connect("").expect("handshake with the real board");
+    let meta = drv.device_metadata().expect("metadata cached after connect");
+    println!(
+        "{} {} serial {} firmware {} protocol v{} — {} px, {}-{} ms, max {}",
+        meta.manufacturer, meta.model, meta.serial, meta.firmware,
+        meta.protocol_version, meta.pixels, meta.integ_min_ms, meta.integ_max_ms,
+        meta.max_intensity
+    );
+
+    assert_eq!(meta.model, "TCD1304");
+    assert_eq!(meta.protocol_version, 1);
+    assert_eq!(meta.pixels, PIXELS as u32);
+    assert_eq!(meta.sensor, "TCD1304AP");
+    assert_eq!(meta.serial.len(), 16, "MCU unique ID is 16 hex digits");
+    assert_ne!(
+        meta.serial, "0011223344556677",
+        "that is the simulator's placeholder — a real board has its own unique ID"
+    );
+
+    // Capture at three integration times; the device clamps the first.
+    for requested in [3u32, 25, 100] {
+        let started = std::time::Instant::now();
+        let frame = drv.scan(&params(requested)).expect("scan");
+        let elapsed = started.elapsed();
+
+        assert_eq!(frame.ys.len(), PIXELS);
+        assert_eq!(frame.units, "counts");
+        let min = frame.ys.iter().cloned().fold(f32::INFINITY, f32::min);
+        let max = frame.ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let mean = frame.ys.iter().sum::<f32>() / frame.ys.len() as f32;
+        println!(
+            "  requested {requested:>4} ms -> {elapsed:>8.1?}  min {min:8.0}  max {max:8.0}  mean {mean:8.1}",
+        );
+
+        // A frame that is all one value means the link is echoing, not sensing.
+        assert!(max > min, "spectrum is flat — no signal reached the host");
+    }
+
+    let after = drv.device_metadata().unwrap();
+    println!("  last seq {}, dropped {}", after.last_seq, after.dropped_frames);
+    assert!(after.last_capture_ms > 0);
+
+    drv.disconnect();
+}
