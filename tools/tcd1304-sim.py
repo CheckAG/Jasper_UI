@@ -72,39 +72,48 @@ def build_frame(type_, payload=b"", seq=0, integ_ms=10, status=0):
     return head + struct.pack("<H", crc16_ccitt(head))
 
 
-def spectrum(scene, integ_ms, tick):
-    """Raw counts as the device would send them, signed 16-bit little-endian.
+# Masked-pixel dark level. This video is inverted: an unilluminated pixel reads
+# HIGH and light pulls the value down. Measured on the real board — the masked
+# DARK window sits near 29300 whatever the integration time.
+DARK_LEVEL = 29300
+dlo, dhi = 16, 28   # the masked DARK window this sim advertises in METADATA
 
-    ponytail: peaks are emitted as HIGH raw values. The real board's polarity is
-    unconfirmed — PROTOCOL.md says a saturated pixel rolls past 0x7FFF and reads
-    negative (bright = high), while the reference GUI inverts for display with
-    max_intensity - raw (dark = high). If a real board disagrees, flip the sign
-    here rather than in the driver.
+
+def spectrum(scene, integ_ms, tick):
+    """Raw counts as the device sends them: signed 16-bit little-endian.
+
+    Inverted video, so a scene builds by SUBTRACTING signal from DARK_LEVEL.
+    The DARK window (pixels 16-28) is masked on the real sensor, so it is left
+    at the dark level here no matter what the scene does — that is what makes
+    it usable as a dark reference, and what the host checks against.
     """
-    baseline = 400 + 40 * math.sin(tick / 3.0)
+    baseline = DARK_LEVEL + 12 * math.sin(tick / 3.0)
     gain = min(integ_ms / 100.0, 1.0)
     ys = [baseline] * PIXELS
 
     if scene in ("lines", "saturated"):
         for nm, strength in _LINES:
             centre = (nm - 200.0) / 800.0 * PIXELS
-            amp = 26000 * strength * gain
+            amp = 13000 * strength * gain
             width = 3.0
             lo, hi = max(0, int(centre - 6 * width)), min(PIXELS, int(centre + 6 * width))
             for i in range(lo, hi):
-                ys[i] += amp * math.exp(-0.5 * ((i - centre) / width) ** 2)
+                ys[i] -= amp * math.exp(-0.5 * ((i - centre) / width) ** 2)
 
     if scene == "saturated":
-        # Drive the strongest line past MAX_INTENSITY so the host's saturation
-        # path has something to detect. Read as int16 these come back negative.
+        # PROTOCOL.md: a saturated pixel rolls past 0x7FFF and reads negative.
+        # Drive a band past the limit so the host's saturation path has
+        # something to detect.
         centre = int((640.2 - 200.0) / 800.0 * PIXELS)
         for i in range(centre - 12, centre + 12):
             ys[i] = 40000
 
     out = bytearray()
     for i, v in enumerate(ys):
-        # Deterministic pseudo-noise: no RNG, so a failing test is reproducible.
+        # Deterministic pseudo-noise: no RNG, so a failing test reproduces.
         v += ((i * 2654435761 + int(tick * 1000)) % 97) - 48
+        if dlo <= i <= dhi and scene != "saturated":
+            v = baseline + (((i * 40503) % 61) - 30)   # masked: dark level only
         v = max(-32768, min(65535, int(v)))
         out += struct.pack("<H" if v > 32767 else "<h", v)
     return bytes(out)
