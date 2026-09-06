@@ -51,13 +51,19 @@ pub struct SpectrumFrame {
     pub timestamp: u64,
 }
 
+/// One instrument the host can see. Produced by probing a port, so every field
+/// here came from the device itself.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeviceInfo {
-    pub id:     String,
-    pub name:   String,
-    pub model:  String,
-    pub status: String,
-    pub temp_c: f32,
+    /// Port path — what `connect` takes.
+    pub id:       String,
+    /// Human label, e.g. "TCD1304 · 323731".
+    pub name:     String,
+    pub model:    String,
+    /// "online" when this is the connected device, else "available".
+    pub status:   String,
+    pub serial:   String,
+    pub firmware: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -106,6 +112,16 @@ pub struct DeviceMetadata {
     pub timestamp:        u64,
 }
 
+/// One line in the Instrument workspace's diagnostics log.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DiagEntry {
+    pub id:       String,
+    pub ts:       u64,
+    /// "info" | "warn" | "error"
+    pub severity: String,
+    pub message:  String,
+}
+
 // ── Driver trait ──────────────────────────────────────────────────────────────
 
 pub trait SpectrumDriver: Send {
@@ -121,5 +137,18 @@ pub trait SpectrumDriver: Send {
     /// Defaults to `None` so a driver with nothing to report says nothing.
     fn device_metadata(&self) -> Option<DeviceMetadata> {
         None
+    }
+
+    /// Whether an instrument is actually open. Operations that touch hardware
+    /// are refused when this is false, rather than connecting on the caller's
+    /// behalf.
+    fn is_connected(&self) -> bool {
+        false
+    }
+
+    /// Recent events — connects, handshake failures, device errors, timeouts.
+    /// Newest last. Defaults to empty rather than to invented entries.
+    fn diagnostics(&self) -> Vec<DiagEntry> {
+        Vec::new()
     }
 }

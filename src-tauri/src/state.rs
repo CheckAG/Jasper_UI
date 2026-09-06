@@ -42,16 +42,27 @@ impl AppState {
 
         eprintln!("[AppState] sidecar script: {script_path}");
 
-        // JASPER_PORT=/dev/ttyACM0 (or a tcd1304-sim pty) selects the real
-        // TCD1304 driver; unset → mock. A pty carries no VID/PID, so the
-        // simulator is only reachable through this override.
+        // JASPER_PORT=/dev/ttyACM0 connects that port at startup — an explicit
+        // opt-in, since nothing else connects on the operator's behalf any more.
+        // It is also the only way to reach a tcd1304-sim pty, which carries no
+        // VID/PID and so never turns up in a port scan.
+        //
+        // Unset, the app starts on the mock so the canvas has a signal, and the
+        // Instrument workspace discovers real hardware when asked.
         let driver: Box<dyn SpectrumDriver + Send> = match std::env::var("JASPER_PORT") {
             Ok(port) if !port.trim().is_empty() => {
-                eprintln!("[AppState] instrument driver: TCD1304 on {port}");
-                Box::new(Tcd1304Driver::new(port.trim().to_string()))
+                let port = port.trim().to_string();
+                let mut d = Tcd1304Driver::new(port.clone());
+                match d.connect(&port) {
+                    Ok(()) => eprintln!("[AppState] instrument driver: TCD1304 connected on {port}"),
+                    // Not fatal: the workspace can connect once the device is
+                    // there, and refusing to launch over a missing cable is worse.
+                    Err(e) => eprintln!("[AppState] JASPER_PORT={port} did not connect: {e}"),
+                }
+                Box::new(d)
             }
             _ => {
-                eprintln!("[AppState] instrument driver: mock (set JASPER_PORT for hardware)");
+                eprintln!("[AppState] instrument driver: mock (set JASPER_PORT to connect hardware at startup)");
                 Box::new(MockDriver::new())
             }
         };

@@ -4,7 +4,7 @@
 // Replaced by Tauri IPC in Phase 4.
 // ============================================================
 
-import type { AcqParams, Spectrum, DeviceInfo } from './types';
+import type { AcqParams, Spectrum } from './types';
 
 type BandDef = [number, number, number]; // [center_nm, width_nm, height]
 
@@ -60,9 +60,3 @@ export function sampleCapture(params: AcqParams, t: number): Spectrum {
 }
 
 
-export function getMockDevices(): DeviceInfo[] {
-  return [
-    { id: 'SPEC-A4', name: 'SPEC-A4', model: 'JASPER-NIR-1', status: 'connected', tempC: 42.1 },
-    { id: 'SPEC-B2', name: 'SPEC-B2', model: 'JASPER-NIR-1', status: 'disconnected', tempC: 38.4 },
-  ];
-}

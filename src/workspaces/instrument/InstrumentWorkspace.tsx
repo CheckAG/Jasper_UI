@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useAcqStore }   from '../../store/acqStore';
+import { useUIStore }    from '../../store/uiStore';
 import { ipc }           from '../../lib/ipc';
 import { WorkspaceShell }from '../../components/layout/WorkspaceShell';
 import { LED }           from '../../components/design/LED';
 import { Button }        from '../../components/design/Button';
 import type { DeviceInfo, DeviceMetadata, DiagEntry, CalStatus } from '../../lib/types';
 
-function CalibrationPanel() {
+function CalibrationPanel({ connected }: { connected: boolean }) {
   const { refState, params, setRefState } = useAcqStore();
+  const pushToast = useUIStore(s => s.pushToast);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [rms, setRms] = useState<Record<string, number>>({});
 
@@ -21,10 +23,13 @@ function CalibrationPanel() {
           : await ipc.calibrateReference(params);
       setRefState({ [key]: result.status as CalStatus });
       if ('rms' in result && result.rms) setRms(r => ({ ...r, [key]: result.rms! }));
-      if ('warn' in result && result.warn) console.warn(`calibration ${key}: ${result.warn}`);
+      // The backend flags a suspect calibration (light left on, near
+      // saturation, signal too low). That belongs in front of the operator, not
+      // in a console nobody has open.
+      if ('warn' in result && result.warn) pushToast(`${key}: ${result.warn}`, 'info');
     } catch (e) {
-      console.error(`calibration ${key} failed:`, e);
       setRefState({ [key]: 'fault' });
+      pushToast(String(e), 'error');
     } finally {
       // Dark/reference capture pauses the acquisition stream — resume it
       if (key !== 'xcal') ipc.startAcquisition(params).catch(() => {});
@@ -59,6 +64,11 @@ function CalibrationPanel() {
         </span>
       </div>
 
+      {!connected && (
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+          Connect an instrument to run a calibration.
+        </span>
+      )}
       {rows.map(row => (
         <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{
@@ -76,7 +86,8 @@ function CalibrationPanel() {
           </div>
           <Button size="sm"
             variant={refState[row.key] === 'ok' ? 'ghost' : 'primary'}
-            disabled={loading[row.key]}
+            disabled={!connected || loading[row.key]}
+            title={connected ? undefined : 'Connect an instrument first'}
             onClick={() => runCal(row.key)}>
             {loading[row.key] ? 'Running…' : refState[row.key] === 'ok' ? 'Re-run' : 'Run'}
           </Button>
@@ -141,35 +152,94 @@ function DeviceMetadataPanel({ meta }: { meta: DeviceMetadata | null }) {
   );
 }
 
-function DeviceSelector({ devices, activeId, onConnect }: {
+/** Instruments the host can see, and the controls to connect one.
+ *
+ *  Every entry answered a protocol handshake on a real port — nothing is listed
+ *  that did not identify itself. When no hardware is attached the list is
+ *  empty, and the port field below is how you reach anything the scan cannot
+ *  see (a pty from tools/tcd1304-sim.py, or a port under an unusual name). */
+function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDisconnect, onRescan }: {
   devices: DeviceInfo[];
-  activeId: string | null;
+  connectedId: string | null;
+  busy: boolean;
+  error: string | null;
   onConnect: (id: string) => void;
+  onDisconnect: () => void;
+  onRescan: () => void;
 }) {
+  const [manual, setManual] = useState('');
+  const connected = devices.find(d => d.id === connectedId) ?? null;
+  const others = devices.filter(d => d.id !== connectedId);
   return (
     <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
       display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <span style={{ fontSize: 14, fontWeight: 600 }}>Instruments</span>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {devices.map(d => (
-          <button key={d.id} onClick={() => onConnect(d.id)} style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-            border: `1px solid ${activeId === d.id ? 'var(--signal)' : 'var(--line)'}`,
-            borderRadius: 10,
-            background: activeId === d.id ? 'var(--signal-soft)' : 'var(--paper)',
-            cursor: 'pointer', fontFamily: 'var(--font-sans)',
-          }}>
-            <LED status={d.status === 'connected' ? 'ok' : d.status === 'fault' ? 'fault' : 'idle'} />
-            <span style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</span>
-            <small className="mono" style={{ color: 'var(--muted)', fontSize: 11 }}>{d.tempC.toFixed(1)}°C</small>
-          </button>
-        ))}
-        <button style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-          border: '1px dashed var(--line-2)', borderRadius: 10, background: 'transparent',
-          cursor: 'pointer', color: 'var(--muted)', fontFamily: 'var(--font-sans)', fontSize: 13 }}>
-          + Add instrument
-        </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>Instruments</span>
+        <Button onClick={onRescan} disabled={busy}>{busy ? 'Scanning…' : 'Rescan'}</Button>
       </div>
+
+      {/* One instrument at a time: the backend holds a single driver, and
+          connecting to another releases the current one first. */}
+      {connected && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+          border: '1px solid var(--signal)', borderRadius: 10, background: 'var(--signal-soft)' }}>
+          <LED status="ok" />
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Connected — {connected.name}</span>
+            <small className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{connected.id}</small>
+          </div>
+          <Button onClick={onDisconnect} disabled={busy}>Disconnect</Button>
+        </div>
+      )}
+
+      {others.length === 0 ? (
+        <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+          {connected
+            ? 'No other instrument found.'
+            : 'No instrument found. Every serial port was probed and none answered as a TCD1304 — check the cable, or enter a port below.'}
+        </span>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
+            letterSpacing: '0.08em', color: 'var(--muted)' }}>
+            {connected ? 'Switch to' : 'Available'}
+          </span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {others.map(d => (
+              <button key={d.id} disabled={busy} onClick={() => onConnect(d.id)}
+                title={connected ? `Release ${connected.id} and connect to ${d.id}` : `Connect to ${d.id}`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                  border: '1px solid var(--line)', borderRadius: 10, background: 'var(--paper)',
+                  cursor: busy ? 'progress' : 'pointer', fontFamily: 'var(--font-sans)',
+                }}>
+                <LED status="idle" />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</span>
+                <small className="mono" style={{ color: 'var(--muted)', fontSize: 11 }}>{d.id}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <form
+        onSubmit={e => { e.preventDefault(); const p = manual.trim(); if (p) { onConnect(p); setManual(''); } }}
+        style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          value={manual}
+          onChange={e => setManual(e.target.value)}
+          placeholder="/dev/ttyACM0 or /dev/pts/N"
+          className="mono"
+          style={{ flex: 1, minWidth: 0, padding: '7px 10px', fontSize: 12,
+            border: '1px dashed var(--line-2)', borderRadius: 10,
+            background: 'transparent', color: 'var(--ink-2)' }}
+        />
+        <Button type="submit" disabled={busy || !manual.trim()}>Connect</Button>
+      </form>
+
+      {error && (
+        <span style={{ fontSize: 12, color: 'var(--danger, var(--muted))', lineHeight: 1.5 }}>{error}</span>
+      )}
     </div>
   );
 }
@@ -182,6 +252,11 @@ function DiagnosticsLog({ entries }: { entries: DiagEntry[] }) {
     <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
       display: 'flex', flexDirection: 'column', gap: 10 }}>
       <span style={{ fontSize: 14, fontWeight: 600 }}>Diagnostics</span>
+      {entries.length === 0 && (
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+          Nothing logged yet. Connects, device errors and dropped frames appear here.
+        </span>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         {entries.slice(-15).reverse().map(e => (
           <div key={e.id} style={{ display: 'grid', gridTemplateColumns: '80px 40px 1fr',
@@ -202,20 +277,52 @@ function DiagnosticsLog({ entries }: { entries: DiagEntry[] }) {
 }
 
 export function InstrumentWorkspace() {
-  const [devices, setDevices] = useState<DeviceInfo[]>([]);
-  const [activeDevice, setActiveDevice] = useState<string | null>(null);
-  const [meta, setMeta] = useState<DeviceMetadata | null>(null);
-  const [diag, setDiag] = useState<DiagEntry[]>([]);
+  const [devices, setDevices]   = useState<DeviceInfo[]>([]);
+  const [meta, setMeta]         = useState<DeviceMetadata | null>(null);
+  const [diag, setDiag]         = useState<DiagEntry[]>([]);
+  const [busy, setBusy]         = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+
+  // The connected device is whichever one the backend reports as online. Kept
+  // from the backend rather than in local state, so the UI cannot claim a
+  // connection the driver does not have.
+  const connectedId = devices.find(d => d.status === 'online')?.id ?? null;
+
+  const refresh = () => Promise.all([
+    ipc.discoverDevices().then(setDevices).catch(() => setDevices([])),
+    ipc.getDeviceMetadata().then(setMeta).catch(() => setMeta(null)),
+    ipc.getDiagnostics().then(setDiag).catch(() => setDiag([])),
+  ]);
+
+  const rescan = () => { setBusy(true); setError(null); refresh().finally(() => setBusy(false)); };
+
+  const connect = (id: string) => {
+    setBusy(true); setError(null);
+    ipc.connectDevice(id)
+      .then(refresh)
+      .catch(e => setError(String(e)))
+      .finally(() => setBusy(false));
+  };
+
+  const disconnect = () => {
+    setBusy(true); setError(null);
+    ipc.disconnectDevice()
+      .then(refresh)
+      .catch(e => setError(String(e)))
+      .finally(() => setBusy(false));
+  };
 
   useEffect(() => {
-    ipc.discoverDevices().then(setDevices);
-    ipc.getDiagnostics().then(setDiag);
-    // Poll rather than subscribe: last frame and dropped count change with every
-    // capture, and there is no event for them.
-    const read = () => ipc.getDeviceMetadata().then(setMeta).catch(() => setMeta(null));
-    read();
-    const id = setInterval(read, 2000);
+    refresh();
+    // Poll only the cheap calls: last frame, dropped count and the log change
+    // with every capture. Discovery is not polled — it opens and handshakes
+    // every serial port on the machine, which is not something to do on a timer.
+    const id = setInterval(() => {
+      ipc.getDeviceMetadata().then(setMeta).catch(() => setMeta(null));
+      ipc.getDiagnostics().then(setDiag).catch(() => {});
+    }, 2000);
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -231,8 +338,11 @@ export function InstrumentWorkspace() {
               Setup & Calibration
             </h2>
           </div>
-          <DeviceSelector devices={devices} activeId={activeDevice} onConnect={id => setActiveDevice(id)} />
-          <CalibrationPanel />
+          <DeviceSelector
+            devices={devices} connectedId={connectedId} busy={busy} error={error}
+            onConnect={connect} onDisconnect={disconnect} onRescan={rescan}
+          />
+          <CalibrationPanel connected={connectedId !== null} />
           <DeviceMetadataPanel meta={meta} />
           <DiagnosticsLog entries={diag} />
         </div>
@@ -243,7 +353,7 @@ export function InstrumentWorkspace() {
           <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
             {meta
               ? `Connected to ${meta.model} on ${meta.port}. Spectra are ${meta.pixels} pixels; the x-axis is pixel index until a wavelength calibration is fitted.`
-              : 'No instrument connected. Set JASPER_PORT, or run tools/tcd1304-sim.py for a simulated device.'}
+              : 'No instrument connected. Connect one above, or run tools/tcd1304-sim.py and enter the pty it prints.'}
           </span>
         </div>
       }

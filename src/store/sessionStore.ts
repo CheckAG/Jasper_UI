@@ -16,9 +16,9 @@ function makeId() {
 
 // Seed sessions shown on first run (before any user-created sessions exist)
 const SEED_SESSIONS: Session[] = [
-  { id: 's1', name: 'Maize Leaf — Run 4', device: 'SPEC-A4', method: 'NIR-Std',  operator: '', createdAt: Date.now() - 3600000,  status: 'active', captureCount: 0 },
-  { id: 's2', name: 'Wheat — Run 11',     device: 'SPEC-B2', method: 'NIR-Std',  operator: '', createdAt: Date.now() - 7200000,  status: 'active', captureCount: 0 },
-  { id: 's3', name: 'Soil A — Cal',       device: 'SPEC-A4', method: 'Soil-Cal', operator: '', createdAt: Date.now() - 86400000, status: 'active', captureCount: 0 },
+  { id: 's1', name: 'Maize Leaf — Run 4', device: '', method: 'NIR-Std',  operator: '', createdAt: Date.now() - 3600000,  status: 'active', captureCount: 0 },
+  { id: 's2', name: 'Wheat — Run 11',     device: '', method: 'NIR-Std',  operator: '', createdAt: Date.now() - 7200000,  status: 'active', captureCount: 0 },
+  { id: 's3', name: 'Soil A — Cal',       device: '', method: 'Soil-Cal', operator: '', createdAt: Date.now() - 86400000, status: 'active', captureCount: 0 },
 ];
 
 interface SessionStore {

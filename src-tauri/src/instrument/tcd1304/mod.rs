@@ -9,6 +9,7 @@
 pub mod frame;
 pub mod metadata;
 
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -21,6 +22,9 @@ use metadata::Metadata;
 
 /// Ignored by the device — the link is USB, not a UART — but the API wants one.
 const BAUD: u32 = 115_200;
+
+/// Shown verbatim in the UI when an operation needs a connection it does not have.
+pub const NOT_CONNECTED: &str = "No instrument connected — connect one first.";
 
 /// Everything except ACQUIRE answers immediately.
 const CMD_TIMEOUT: Duration = Duration::from_secs(1);
@@ -221,14 +225,88 @@ impl Io {
     }
 }
 
+/// How many log lines to keep. The panel shows the tail; older lines are noise.
+const DIAG_CAPACITY: usize = 200;
+
 pub struct Tcd1304Driver {
     port_path: String,
     io: Mutex<Option<Io>>,
+    diag: Mutex<VecDeque<DiagEntry>>,
+}
+
+/// Port names worth probing. A pty (the simulator) never appears in
+/// `available_ports()`, which is what the JASPER_PORT override is for.
+fn looks_like_a_serial_port(name: &str) -> bool {
+    let base = name.rsplit('/').next().unwrap_or(name);
+    base.starts_with("ttyACM")
+        || base.starts_with("ttyUSB")
+        || base.starts_with("cu.usbmodem")
+        || base.starts_with("COM")
+}
+
+/// Open a port, handshake, and report who answered — then close it again.
+///
+/// This is how discovery works. The device ships the stock Renesas CDC
+/// VID:PID (045B:5310), shared with other RA demo firmware, and a USB serial
+/// string descriptor that is identical on every board — so neither identifies a
+/// unit. `serialport` is also built without libudev here, so VID/PID are not
+/// even readable. Asking the device who it is, is both more reliable and the
+/// only option.
+pub fn probe(port_path: &str) -> Result<Idn, String> {
+    let io = Tcd1304Driver::open(port_path)?;
+    Ok(io.idn.clone())
+}
+
+/// Every TCD1304 the host can see.
+///
+/// `skip` is the port already held open by the live driver — probing it would
+/// fail with "device busy" and knock out a working connection, so the caller
+/// passes it in and supplies that entry from its own cached identity.
+pub fn discover(skip: Option<&str>) -> Vec<DeviceInfo> {
+    let ports = serialport::available_ports().unwrap_or_default();
+    ports
+        .into_iter()
+        .map(|p| p.port_name)
+        .filter(|name| looks_like_a_serial_port(name))
+        .filter(|name| Some(name.as_str()) != skip)
+        .filter_map(|name| {
+            probe(&name).ok().map(|idn| DeviceInfo {
+                id:       name.clone(),
+                name:     friendly_name(&idn),
+                model:    idn.model,
+                status:   "available".into(),
+                serial:   idn.serial,
+                firmware: idn.firmware,
+            })
+        })
+        .collect()
+}
+
+/// "TCD1304 · 323731" — the serial's tail is enough to tell two units apart
+/// without filling the button with 16 hex digits.
+fn friendly_name(idn: &Idn) -> String {
+    let tail = idn.serial.len().saturating_sub(6);
+    if idn.serial.is_empty() {
+        idn.model.clone()
+    } else {
+        format!("{} · {}", idn.model, &idn.serial[tail..])
+    }
 }
 
 impl Tcd1304Driver {
     pub fn new(port_path: String) -> Self {
-        Self { port_path, io: Mutex::new(None) }
+        Self { port_path, io: Mutex::new(None), diag: Mutex::new(VecDeque::new()) }
+    }
+
+    fn log(&self, severity: &str, message: impl Into<String>) {
+        if let Ok(mut d) = self.diag.lock() {
+            if d.len() >= DIAG_CAPACITY {
+                d.pop_front();
+            }
+            let ts = now_ms();
+            let id = format!("{ts}-{}", d.len());
+            d.push_back(DiagEntry { id, ts, severity: severity.to_string(), message: message.into() });
+        }
     }
 
     pub fn port_path(&self) -> &str {
@@ -274,19 +352,27 @@ impl Tcd1304Driver {
         Ok(io)
     }
 
-    /// Open on first use. `connect` is the explicit path, but a scan on a
-    /// driver that was never connected should still work.
+    /// Run something against the open port.
+    ///
+    /// Errors when nothing is connected. This used to open the port on first
+    /// use, which meant a calibration or a scan would silently connect to
+    /// whatever port the driver was constructed with — so pressing "Run" on
+    /// Dark with no instrument selected quietly connected and captured. With
+    /// connect and disconnect now explicit in the UI, an operation on a
+    /// disconnected instrument is a mistake worth reporting, not something to
+    /// paper over.
     fn with_io<T>(&self, f: impl FnOnce(&mut Io) -> Result<T, String>) -> Result<T, String> {
         let mut guard = self.io.lock().map_err(|_| "driver lock poisoned".to_string())?;
-        if guard.is_none() {
-            *guard = Some(Self::open(&self.port_path)?);
-        }
-        let io = guard.as_mut().expect("just opened");
+        let Some(io) = guard.as_mut() else {
+            return Err(NOT_CONNECTED.to_string());
+        };
         let result = f(io);
-        if result.is_err() {
+        if let Err(e) = &result {
             // Drop the connection so the next call re-handshakes rather than
             // inheriting a stream we have lost our place in.
             *guard = None;
+            drop(guard);
+            self.log("error", format!("{e} — connection dropped, will re-handshake"));
         }
         result
     }
@@ -317,23 +403,26 @@ impl SpectrumDriver for Tcd1304Driver {
         })
     }
 
+    /// Only this driver's own connection. Scanning the machine for other
+    /// instruments is `discover()`, called from the command layer — it is not a
+    /// property of an already-connected driver, and probing a port we hold open
+    /// would fail as busy.
     fn device_list(&self) -> Vec<DeviceInfo> {
-        let connected = self.io.lock().map(|g| g.is_some()).unwrap_or(false);
-        let (name, model) = match self.io.lock().ok().and_then(|g| {
-            g.as_ref().map(|io| (io.idn.serial.clone(), io.idn.model.clone()))
-        }) {
-            Some((serial, model)) if !serial.is_empty() => {
-                (format!("{model} · {}", &serial[serial.len().saturating_sub(6)..]), model)
-            }
-            _ => (self.port_path.clone(), MODEL.to_string()),
-        };
-        vec![DeviceInfo {
-            id: self.port_path.clone(),
-            name,
-            model,
-            status: if connected { "online" } else { "offline" }.to_string(),
-            temp_c: 0.0, // no temperature sensor on this hardware
-        }]
+        self.io
+            .lock()
+            .ok()
+            .and_then(|g| {
+                g.as_ref().map(|io| DeviceInfo {
+                    id:       self.port_path.clone(),
+                    name:     friendly_name(&io.idn),
+                    model:    io.idn.model.clone(),
+                    status:   "online".into(),
+                    serial:   io.idn.serial.clone(),
+                    firmware: io.idn.firmware.clone(),
+                })
+            })
+            .into_iter()
+            .collect()
     }
 
     fn connect(&mut self, device_id: &str) -> Result<(), String> {
@@ -341,7 +430,15 @@ impl SpectrumDriver for Tcd1304Driver {
             self.port_path = device_id.to_string();
             *self.io.lock().map_err(|_| "driver lock poisoned".to_string())? = None;
         }
-        let io = Self::open(&self.port_path)?;
+        let io = match Self::open(&self.port_path) {
+            Ok(io) => io,
+            Err(e) => {
+                self.log("error", format!("connect {}: {e}", self.port_path));
+                return Err(e);
+            }
+        };
+        self.log("info", format!("connected {} — {} {} firmware {}",
+            self.port_path, io.idn.model, io.idn.serial, io.idn.firmware));
         *self.io.lock().map_err(|_| "driver lock poisoned".to_string())? = Some(io);
         Ok(())
     }
@@ -353,7 +450,10 @@ impl SpectrumDriver for Tcd1304Driver {
                 // next session does not open onto a spectrum in flight.
                 let _ = io.write_cmd("X");
             }
-            *guard = None;
+            if guard.is_some() {
+                *guard = None;
+                self.log("info", format!("disconnected {}", self.port_path));
+            }
         }
     }
 
@@ -378,6 +478,14 @@ impl SpectrumDriver for Tcd1304Driver {
                 timestamp: now_ms(),
             })
         })
+    }
+
+    fn is_connected(&self) -> bool {
+        self.io.lock().map(|g| g.is_some()).unwrap_or(false)
+    }
+
+    fn diagnostics(&self) -> Vec<DiagEntry> {
+        self.diag.lock().map(|d| d.iter().cloned().collect()).unwrap_or_default()
     }
 
     fn calibrate_dark(&self, _params: &AcqParams) -> Result<CalResult, String> {

@@ -40,6 +40,7 @@ pub fn run() {
             cmd_connect_device,
             cmd_disconnect_device,
             cmd_get_device_metadata,
+            cmd_get_diagnostics,
             cmd_scan,
             cmd_start_acquisition,
             cmd_stop_acquisition,
