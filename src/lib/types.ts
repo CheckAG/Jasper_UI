@@ -141,15 +141,31 @@ export interface DeviceEvent {
   ts:       number;
 }
 
-// --- Telemetry ---
-export interface Telemetry {
-  deviceId:   string;
-  tempC:      number;
-  lampHours:  number;
-  driftSigma: number;
-  headroom:   number;
-  queueDepth: number;
-  timestamp:  number;
+// --- Device ---
+/** What the instrument reports about itself. Hand-mirrored from
+ *  `DeviceMetadata` in src-tauri/src/instrument/driver.rs — change both.
+ *
+ *  This replaces `Telemetry` for hardware that has none: the TCD1304 reports no
+ *  temperature, lamp hours, drift or headroom. */
+export interface DeviceMetadata {
+  port:            string;
+  manufacturer:    string;
+  model:           string;
+  /** Per-unit ID. On the TCD1304 the MCU unique ID — the USB serial string is a
+   *  constant on every board, so this is the only thing telling two units apart. */
+  serial:          string;
+  /** Display only. Gate behaviour on protocolVersion. */
+  firmware:        string;
+  protocolVersion: number;
+  pixels:          number;
+  integMinMs:      number;
+  integMaxMs:      number;
+  maxIntensity:    number;
+  sensor:          string;
+  lastSeq:         number;
+  droppedFrames:   number;
+  lastCaptureMs:   number;
+  timestamp:       number;
 }
 
 // --- Diagnostics log entry ---

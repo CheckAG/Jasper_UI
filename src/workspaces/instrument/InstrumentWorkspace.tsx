@@ -4,8 +4,7 @@ import { ipc }           from '../../lib/ipc';
 import { WorkspaceShell }from '../../components/layout/WorkspaceShell';
 import { LED }           from '../../components/design/LED';
 import { Button }        from '../../components/design/Button';
-import { MonoReadout }   from '../../components/design/MonoReadout';
-import type { DeviceInfo, Telemetry, DiagEntry, CalStatus } from '../../lib/types';
+import type { DeviceInfo, DeviceMetadata, DiagEntry, CalStatus } from '../../lib/types';
 
 function CalibrationPanel() {
   const { refState, params, setRefState } = useAcqStore();
@@ -87,19 +86,57 @@ function CalibrationPanel() {
   );
 }
 
-function TelemetryPanel({ telemetry }: { telemetry: Telemetry | null }) {
-  if (!telemetry) return null;
+function Field({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+      <span className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
+        letterSpacing: '0.08em', color: 'var(--muted)' }}>{label}</span>
+      <span className={mono ? 'mono' : undefined}
+        style={{ fontSize: 13, color: 'var(--ink-2)', overflowWrap: 'anywhere' }}>{value}</span>
+    </div>
+  );
+}
+
+/** What the instrument reports about itself.
+ *
+ *  Replaces the old telemetry tiles: this hardware has no temperature sensor,
+ *  no lamp, no drift estimate and no queue, so those four readouts were showing
+ *  numbers the device never sent. Everything here is read during the handshake
+ *  or counted from frame headers. */
+function DeviceMetadataPanel({ meta }: { meta: DeviceMetadata | null }) {
   return (
     <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
       display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <span style={{ fontSize: 14, fontWeight: 600 }}>Telemetry</span>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <MonoReadout label="Detector temp" value={telemetry.tempC.toFixed(1)} unit="°C"
-          delta={telemetry.driftSigma > 0.5 ? `+${telemetry.driftSigma.toFixed(2)}σ drift` : undefined} deltaUp />
-        <MonoReadout label="Lamp hours" value={telemetry.lampHours} unit="hr" />
-        <MonoReadout label="Headroom" value={telemetry.headroom} unit="%" />
-        <MonoReadout label="Queue" value={telemetry.queueDepth} unit="frames" />
-      </div>
+      <span style={{ fontSize: 14, fontWeight: 600 }}>Device</span>
+      {!meta ? (
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+          No instrument connected.
+        </span>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Model"    value={meta.model} />
+            <Field label="Sensor"   value={meta.sensor || '—'} />
+            <Field label="Serial"   value={meta.serial || '—'} />
+            <Field label="Port"     value={meta.port} />
+            <Field label="Firmware" value={meta.firmware} />
+            <Field label="Protocol" value={`v${meta.protocolVersion}`} />
+          </div>
+          <div style={{ height: 1, background: 'var(--line)' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Pixels"      value={meta.pixels.toLocaleString()} />
+            <Field label="Integration" value={`${meta.integMinMs}–${meta.integMaxMs} ms`} />
+            <Field label="Full scale"  value={meta.maxIntensity.toLocaleString()} />
+            <Field label="Last frame"  value={meta.lastCaptureMs ? `#${meta.lastSeq} · ${meta.lastCaptureMs} ms` : '—'} />
+          </div>
+          {meta.droppedFrames > 0 && (
+            <span style={{ fontSize: 12, color: 'var(--warn, var(--muted))' }}>
+              {meta.droppedFrames} frame{meta.droppedFrames === 1 ? '' : 's'} arrived one
+              integration period late (missed a USB write slot). The data is valid.
+            </span>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -167,14 +204,18 @@ function DiagnosticsLog({ entries }: { entries: DiagEntry[] }) {
 export function InstrumentWorkspace() {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [activeDevice, setActiveDevice] = useState<string | null>(null);
-  const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
+  const [meta, setMeta] = useState<DeviceMetadata | null>(null);
   const [diag, setDiag] = useState<DiagEntry[]>([]);
 
   useEffect(() => {
     ipc.discoverDevices().then(setDevices);
     ipc.getDiagnostics().then(setDiag);
-    const unsub = ipc.onTelemetry(t => setTelemetry(t));
-    return unsub;
+    // Poll rather than subscribe: last frame and dropped count change with every
+    // capture, and there is no event for them.
+    const read = () => ipc.getDeviceMetadata().then(setMeta).catch(() => setMeta(null));
+    read();
+    const id = setInterval(read, 2000);
+    return () => clearInterval(id);
   }, []);
 
   return (
@@ -192,33 +233,18 @@ export function InstrumentWorkspace() {
           </div>
           <DeviceSelector devices={devices} activeId={activeDevice} onConnect={id => setActiveDevice(id)} />
           <CalibrationPanel />
-          <TelemetryPanel telemetry={telemetry} />
+          <DeviceMetadataPanel meta={meta} />
           <DiagnosticsLog entries={diag} />
         </div>
       }
       context={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <h5 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Device info</h5>
-          {activeDevice ? (
-            (() => {
-              const d = devices.find(x => x.id === activeDevice);
-              if (!d) return null;
-              return (
-                <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '80px 1fr',
-                  gap: '4px 10px', fontSize: 12 }}>
-                  {[['Model', d.model], ['ID', d.id], ['Status', d.status], ['Temp', `${d.tempC.toFixed(1)} °C`]].map(([k, v]) => (
-                    <>
-                      <dt key={k + '-k'} className="mono" style={{ fontSize: 10, color: 'var(--muted)',
-                        textTransform: 'uppercase', letterSpacing: '0.08em', paddingTop: 2 }}>{k}</dt>
-                      <dd key={k + '-v'} style={{ margin: 0, color: 'var(--ink-2)' }}>{v}</dd>
-                    </>
-                  ))}
-                </dl>
-              );
-            })()
-          ) : (
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Select a device to see details</span>
-          )}
+          <h5 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Session</h5>
+          <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+            {meta
+              ? `Connected to ${meta.model} on ${meta.port}. Spectra are ${meta.pixels} pixels; the x-axis is pixel index until a wavelength calibration is fitted.`
+              : 'No instrument connected. Set JASPER_PORT, or run tools/tcd1304-sim.py for a simulated device.'}
+          </span>
         </div>
       }
     />

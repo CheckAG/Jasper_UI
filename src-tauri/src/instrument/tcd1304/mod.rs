@@ -273,9 +273,12 @@ impl Tcd1304Driver {
         }
         result
     }
+}
 
-    /// Device identity and limits, for the Instrument panel. `None` until connected.
-    pub fn device_metadata(&self) -> Option<DeviceMetadata> {
+impl SpectrumDriver for Tcd1304Driver {
+    /// Everything the device told us at handshake, plus what the frame headers
+    /// have said since. `None` until connected.
+    fn device_metadata(&self) -> Option<DeviceMetadata> {
         let guard = self.io.lock().ok()?;
         let io = guard.as_ref()?;
         Some(DeviceMetadata {
@@ -296,9 +299,7 @@ impl Tcd1304Driver {
             timestamp:        now_ms(),
         })
     }
-}
 
-impl SpectrumDriver for Tcd1304Driver {
     fn device_list(&self) -> Vec<DeviceInfo> {
         let connected = self.io.lock().map(|g| g.is_some()).unwrap_or(false);
         let (name, model) = match self.io.lock().ok().and_then(|g| {
@@ -362,13 +363,6 @@ impl SpectrumDriver for Tcd1304Driver {
         })
     }
 
-    fn telemetry(&self) -> Result<TelemetryData, String> {
-        // This hardware reports no temperature, lamp hours, drift or headroom.
-        // Reporting zeros here would be indistinguishable from real readings, so
-        // the Instrument panel should use device_metadata() instead (E7a).
-        Err("this instrument reports no telemetry".to_string())
-    }
-
     fn calibrate_dark(&self, _params: &AcqParams) -> Result<CalResult, String> {
         // The frame averaging and storage happen in the command layer; the
         // device has no calibration command of its own.
@@ -384,29 +378,6 @@ impl SpectrumDriver for Tcd1304Driver {
         // keeps it that way. Fitting one from a lamp spectrum is E5.
         Err("wavelength calibration is host-side; not implemented yet (E5)".to_string())
     }
-}
-
-/// What this instrument can actually tell you about itself. Replaces the
-/// telemetry tiles, none of whose fields exist on this hardware.
-///
-/// Mirrored by hand in `src/lib/types.ts` and `src/lib/dto.ts`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct DeviceMetadata {
-    pub port:             String,
-    pub manufacturer:     String,
-    pub model:            String,
-    pub serial:           String,
-    pub firmware:         String,
-    pub protocol_version: u32,
-    pub pixels:           u32,
-    pub integ_min_ms:     u32,
-    pub integ_max_ms:     u32,
-    pub max_intensity:    i32,
-    pub sensor:           String,
-    pub last_seq:         u16,
-    pub dropped_frames:   u32,
-    pub last_capture_ms:  u32,
-    pub timestamp:        u64,
 }
 
 /// Saturated pixel indices in a raw sample block, for the caller to warn about.

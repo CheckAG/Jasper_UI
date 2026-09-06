@@ -11,15 +11,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen  } from '@tauri-apps/api/event';
 
-import { generateSpectrum, getMockTelemetry } from './mockDriver';
+import { generateSpectrum } from './mockDriver';
 import type {
-  AcqParams, Spectrum, Telemetry, DeviceInfo, DeviceEvent,
+  AcqParams, Spectrum, DeviceInfo, DeviceEvent, DeviceMetadata,
   CalResult, XCalResult, PipelineNode, PipelineResult,
   ChemAlgorithm, ModelMeta, PCAResult, RegressionResult,
   PredictionResult, MixtureResult, Session, Capture,
 } from './types';
 import type {
-  DeviceRowDTO, TelemetryDTO, FrameDTO, CalResultDTO, XCalResultDTO,
+  DeviceRowDTO, DeviceMetadataDTO, FrameDTO, CalResultDTO, XCalResultDTO,
   SessionRowDTO, CaptureRowDTO, ManifestNodeDTO, PipelineResultDTO,
   ReloadPluginsDTO, PCAResultDTO, TrainResultDTO, PredictionResultDTO,
   MixtureResultDTO,
@@ -132,13 +132,23 @@ export const ipc = {
     ? tauriInvoke('cmd_disconnect_device')
     : Promise.resolve(),
 
-  getTelemetry: (): Promise<Telemetry> => IS_TAURI
-    ? tauriInvoke<TelemetryDTO>('cmd_get_telemetry').then(t => ({
-        deviceId: t.device_id, tempC: t.temp_c, lampHours: t.lamp_hours,
-        driftSigma: t.drift_sigma, headroom: t.headroom,
-        queueDepth: t.queue_depth, timestamp: t.timestamp,
+  /** Identity and limits of the connected instrument, or null when nothing is
+   *  connected. Never throws for "no device" — that is an empty state, not an error. */
+  getDeviceMetadata: (): Promise<DeviceMetadata | null> => IS_TAURI
+    ? tauriInvoke<DeviceMetadataDTO | null>('cmd_get_device_metadata').then(m => m && ({
+        port: m.port, manufacturer: m.manufacturer, model: m.model, serial: m.serial,
+        firmware: m.firmware, protocolVersion: m.protocol_version, pixels: m.pixels,
+        integMinMs: m.integ_min_ms, integMaxMs: m.integ_max_ms,
+        maxIntensity: m.max_intensity, sensor: m.sensor, lastSeq: m.last_seq,
+        droppedFrames: m.dropped_frames, lastCaptureMs: m.last_capture_ms,
+        timestamp: m.timestamp,
       }))
-    : Promise.resolve(getMockTelemetry()),
+    : Promise.resolve({
+        port: 'browser', manufacturer: 'JASPER', model: 'JASPER-NIR-1', serial: 'SPEC-A4',
+        firmware: 'mock', protocolVersion: 0, pixels: 320, integMinMs: 5, integMaxMs: 500,
+        maxIntensity: 65535, sensor: 'simulated', lastSeq: 0, droppedFrames: 0,
+        lastCaptureMs: 0, timestamp: Date.now(),
+      }),
 
   scan: (params: AcqParams): Promise<Spectrum> => IS_TAURI
     ? tauriInvoke<FrameDTO>('cmd_scan', { params: toRustParams(params) })
@@ -255,7 +265,7 @@ export const ipc = {
 
   getNodeManifest: (): Promise<PipelineNode[]> => {
     if (!IS_TAURI) {
-      return Promise.resolve([
+      return Promise.resolve<PipelineNode[]>([
         { id: 'n-boxcar',  kind: 'boxcar',  name: 'Boxcar smooth',    code: 'AT_3_1', enabled: false, params: { window: 9 } },
         { id: 'n-sg',      kind: 'sg',      name: 'Savitzky–Golay',   code: 'AT_3_2', enabled: false, params: { window: 11, poly: 2, deriv: 0 } },
         { id: 'n-snv',     kind: 'snv',     name: 'SNV',              code: 'AT_1_1', enabled: false, params: {} },
@@ -323,7 +333,11 @@ export const ipc = {
       filePath:     r.file_path,
       createdAt:    Date.now(),
       createdBy:    'User',
-      metrics:      { rmsep: r.rmsep, r2: r.r2, accuracy: r.accuracy },
+      // The sidecar sends whichever metrics the algorithm produced; drop the
+      // absent ones rather than storing undefined in a Record<string, number>.
+      metrics:      Object.fromEntries(
+        Object.entries({ rmsep: r.rmsep, r2: r.r2, accuracy: r.accuracy })
+          .filter((e): e is [string, number] => typeof e[1] === 'number')),
       featureRange: [400, 2000] as [number, number],
     }));
   },
@@ -459,10 +473,6 @@ export const ipc = {
     return () => { unlisten?.(); };
   },
 
-  onTelemetry: (cb: (t: Telemetry) => void): (() => void) => {
-    const id = setInterval(() => ipc.getTelemetry().then(cb), 2000);
-    return () => clearInterval(id);
-  },
 
   onDeviceEvent: (_cb: (e: DeviceEvent) => void): (() => void) => () => {},
 };

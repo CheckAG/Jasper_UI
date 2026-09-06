@@ -278,13 +278,26 @@ fn driver_refuses_a_device_that_is_not_a_tcd1304() {
 }
 
 #[test]
-fn driver_declines_telemetry_rather_than_inventing_it() {
+fn driver_declines_wavelength_calibration_rather_than_inventing_it() {
     let (_sim, pty) = spawn_sim(&["--scene", "flat", "--no-delay"]);
     let drv = Tcd1304Driver::new(pty);
-    // This hardware has no temperature, lamp hours, drift or headroom. Zeros
-    // would be indistinguishable from real readings in the UI.
-    assert!(drv.telemetry().is_err());
-    assert!(drv.calibrate_xcal().is_err(), "wavelength calibration is E5");
+    // The device stores no wavelength calibration; fitting one is E5.
+    assert!(drv.calibrate_xcal().is_err());
+}
+
+#[test]
+fn device_metadata_is_none_until_connected() {
+    let (_sim, pty) = spawn_sim(&["--scene", "flat", "--no-delay"]);
+    let mut drv = Tcd1304Driver::new(pty);
+    assert!(drv.device_metadata().is_none(), "nothing to report before the handshake");
+    drv.connect("").expect("handshake");
+    let m = drv.device_metadata().expect("populated after the handshake");
+    assert_eq!(m.model, "TCD1304");
+    assert_eq!(m.protocol_version, 1);
+    assert_eq!(m.max_intensity, 32_767);
+    assert_eq!(m.last_capture_ms, 0, "no capture yet");
+    drv.scan(&params(8)).expect("scan");
+    assert!(drv.device_metadata().unwrap().last_capture_ms > 0, "a capture updates it");
 }
 
 // ── Real hardware ────────────────────────────────────────────────────────────

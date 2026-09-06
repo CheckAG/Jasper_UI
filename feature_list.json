@@ -178,9 +178,9 @@
       "title": "Instrument panel: report real device metadata instead of fake telemetry",
       "type": "fix",
       "priority": "P1",
-      "status": "todo",
+      "status": "in-review",
       "issue": 9,
-      "branch": null,
+      "branch": "feature/9_device-metadata-panel",
       "depends_on": [
         "E2b"
       ],
