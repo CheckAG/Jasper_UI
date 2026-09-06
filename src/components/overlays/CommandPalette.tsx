@@ -1,14 +1,7 @@
 import { useState } from 'react';
 import { useUIStore }       from '../../store/uiStore';
+import { WORKSPACES }    from '../../lib/features';
 import { useSessionStore }  from '../../store/sessionStore';
-import type { WorkspaceId } from '../../lib/types';
-
-const WS_ITEMS: { id: WorkspaceId; label: string }[] = [
-  { id: 'instrument', label: 'Instrument' },
-  { id: 'acquire',    label: 'Acquire' },
-  { id: 'analyze',    label: 'Analyze' },
-  { id: 'chemometrics', label: 'Chemometrics' },
-];
 
 interface CmdItem {
   group: string;
@@ -25,7 +18,7 @@ export function CommandPalette() {
   function close() { setCmdOpen(false); setQuery(''); }
 
   const allItems: CmdItem[] = [
-    ...WS_ITEMS.map(ws => ({
+    ...WORKSPACES.map(ws => ({
       group: 'Workspace', label: ws.label, meta: '↵',
       action: () => { setWorkspace(ws.id); close(); },
     })),

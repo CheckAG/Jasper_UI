@@ -3,6 +3,7 @@ import { useAcqStore }     from './store/acqStore';
 import { useSessionStore } from './store/sessionStore';
 import { useUIStore }      from './store/uiStore';
 import { ipc }             from './lib/ipc';
+import { isWorkspaceEnabled, DEFAULT_WORKSPACE } from './lib/features';
 import { sampleCapture }   from './lib/mockDriver';
 import { AcquireWorkspace }      from './workspaces/acquire/AcquireWorkspace';
 import { InstrumentWorkspace }   from './workspaces/instrument/InstrumentWorkspace';
@@ -23,7 +24,13 @@ function captureCurrentFrame(): { xs: Float32Array; ys: Float32Array } {
 export default function App() {
   const { params, paused, setParam, setPaused, setLiveSpectrum } = useAcqStore();
   const { addCapture, init: initSessions } = useSessionStore();
-  const { density, activeWs, cmdOpen, exportOpen, newSessionOpen, setCmdOpen } = useUIStore();
+  const { density, activeWs, cmdOpen, exportOpen, newSessionOpen, setCmdOpen, setWorkspace } = useUIStore();
+
+  // A workspace that has since been switched off must not stay selected —
+  // otherwise it renders with no way in the rail to leave it.
+  useEffect(() => {
+    if (!isWorkspaceEnabled(activeWs)) setWorkspace(DEFAULT_WORKSPACE);
+  }, [activeWs, setWorkspace]);
 
   // One-time init: density, session hydration, live-frame subscription
   useEffect(() => {
