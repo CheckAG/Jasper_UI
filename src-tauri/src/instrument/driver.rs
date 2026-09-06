@@ -52,17 +52,6 @@ pub struct SpectrumFrame {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TelemetryData {
-    pub device_id:   String,
-    pub temp_c:      f32,
-    pub lamp_hours:  u32,
-    pub drift_sigma: f32,
-    pub headroom:    f32,
-    pub queue_depth: u32,
-    pub timestamp:   u64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeviceInfo {
     pub id:     String,
     pub name:   String,
@@ -86,6 +75,37 @@ pub struct XCalResult {
     pub peaks_found:  u32,
 }
 
+/// What an instrument can actually tell you about itself.
+///
+/// This replaced a `TelemetryData` of temperature, lamp hours, drift and
+/// headroom — none of which the TCD1304 measures, so all four were rendered as
+/// zeros indistinguishable from real readings. Everything here is either read
+/// from the device during the handshake or counted from frame headers since.
+///
+/// Mirrored by hand in `src/lib/types.ts` and `src/lib/dto.ts`.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeviceMetadata {
+    pub port:             String,
+    pub manufacturer:     String,
+    pub model:            String,
+    /// Per-unit identifier. On the TCD1304 this is the MCU unique ID — the USB
+    /// serial string descriptor is a compile-time constant on every board, so
+    /// this is the only thing that distinguishes two units.
+    pub serial:           String,
+    /// Opaque display string. Gate behaviour on `protocol_version`, never this.
+    pub firmware:         String,
+    pub protocol_version: u32,
+    pub pixels:           u32,
+    pub integ_min_ms:     u32,
+    pub integ_max_ms:     u32,
+    pub max_intensity:    i32,
+    pub sensor:           String,
+    pub last_seq:         u16,
+    pub dropped_frames:   u32,
+    pub last_capture_ms:  u32,
+    pub timestamp:        u64,
+}
+
 // ── Driver trait ──────────────────────────────────────────────────────────────
 
 pub trait SpectrumDriver: Send {
@@ -93,8 +113,13 @@ pub trait SpectrumDriver: Send {
     fn connect(&mut self, device_id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
     fn scan(&self, params: &AcqParams) -> Result<SpectrumFrame, String>;
-    fn telemetry(&self) -> Result<TelemetryData, String>;
     fn calibrate_dark(&self, params: &AcqParams) -> Result<CalResult, String>;
     fn calibrate_reference(&self, params: &AcqParams) -> Result<CalResult, String>;
     fn calibrate_xcal(&self) -> Result<XCalResult, String>;
+
+    /// Identity and limits, once connected. `None` before the handshake.
+    /// Defaults to `None` so a driver with nothing to report says nothing.
+    fn device_metadata(&self) -> Option<DeviceMetadata> {
+        None
+    }
 }

@@ -17,14 +17,23 @@ export interface DeviceRowDTO {
   temp_c: number;
 }
 
-export interface TelemetryDTO {
-  device_id:   string;
-  temp_c:      number;
-  lamp_hours:  number;
-  drift_sigma: number;
-  headroom:    number;
-  queue_depth: number;
-  timestamp:   number;
+/** Mirrors `DeviceMetadata` in src-tauri/src/instrument/driver.rs. */
+export interface DeviceMetadataDTO {
+  port:             string;
+  manufacturer:     string;
+  model:            string;
+  serial:           string;
+  firmware:         string;
+  protocol_version: number;
+  pixels:           number;
+  integ_min_ms:     number;
+  integ_max_ms:     number;
+  max_intensity:    number;
+  sensor:           string;
+  last_seq:         number;
+  dropped_frames:   number;
+  last_capture_ms:  number;
+  timestamp:        number;
 }
 
 export interface FrameDTO {

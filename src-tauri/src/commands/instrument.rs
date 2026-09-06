@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{AppHandle, State, Emitter};
 use crate::state::AppState;
-use crate::instrument::driver::{AcqParams, DeviceInfo, TelemetryData, CalResult, XCalResult};
+use crate::instrument::driver::{AcqParams, DeviceInfo, CalResult, XCalResult};
 use crate::instrument::process::{self, CalFrame};
 
 /// Scans averaged into a stored dark/reference frame.
@@ -58,13 +58,18 @@ pub async fn cmd_disconnect_device(
     .await
 }
 
+/// Identity and limits of the connected instrument.
+///
+/// Returns `None` when nothing is connected, or when the driver has nothing to
+/// report — the panel shows an empty state rather than zeros that look like
+/// readings.
 #[tauri::command]
-pub async fn cmd_get_telemetry(
+pub async fn cmd_get_device_metadata(
     state: State<'_, AppState>,
-) -> Result<TelemetryData, String> {
+) -> Result<Option<crate::instrument::driver::DeviceMetadata>, String> {
     let driver = Arc::clone(&state.driver);
     run_blocking(move || {
-        driver.lock().map_err(|e| e.to_string())?.telemetry()
+        Ok(driver.lock().map_err(|e| e.to_string())?.device_metadata())
     })
     .await
 }

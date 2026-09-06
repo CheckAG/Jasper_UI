@@ -138,18 +138,6 @@ impl SpectrumDriver for MockDriver {
         Ok(SpectrumFrame { xs, ys, mode: params.mode.clone(), units: String::new(), timestamp: now_ms() })
     }
 
-    fn telemetry(&self) -> Result<TelemetryData, String> {
-        Ok(TelemetryData {
-            device_id:   self.device_id.clone(),
-            temp_c:      42.1 + (anim_t() * 0.1).sin() * 0.3,
-            lamp_hours:  1280,
-            drift_sigma: 0.42,
-            headroom:    87.0,
-            queue_depth: 0,
-            timestamp:   now_ms(),
-        })
-    }
-
     fn calibrate_dark(&self, _params: &AcqParams) -> Result<CalResult, String> {
         // Simulate ~600ms work
         std::thread::sleep(std::time::Duration::from_millis(650));
@@ -168,6 +156,32 @@ impl SpectrumDriver for MockDriver {
             rms:          0.018,
             coefficients: vec![400.0, 1.6],
             peaks_found:  12,
+        })
+    }
+
+    /// The mock has no device, so it says so in the fields a person will read.
+    /// Populated rather than `None` so the Instrument panel still has something
+    /// to lay out during UI work without hardware attached.
+    fn device_metadata(&self) -> Option<DeviceMetadata> {
+        Some(DeviceMetadata {
+            port:             "mock".into(),
+            manufacturer:     "JASPER".into(),
+            model:            "JASPER-NIR-1".into(),
+            serial:           self.device_id.clone(),
+            firmware:         "mock".into(),
+            protocol_version: 0,
+            pixels:           N as u32,
+            integ_min_ms:     5,
+            integ_max_ms:     500,
+            max_intensity:    65_535,
+            sensor:           "simulated".into(),
+            last_seq:         0,
+            dropped_frames:   0,
+            last_capture_ms:  0,
+            timestamp:        std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
         })
     }
 }

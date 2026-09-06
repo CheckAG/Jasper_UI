@@ -39,7 +39,7 @@ function PipelineStrip() {
         border: '1px solid var(--line)', borderRadius: 9, background: 'var(--tint)',
         color: 'var(--ink-2)', fontSize: 13 }}>Raw</div>
 
-      {pipeline.map((node, idx) => (
+      {pipeline.map((node) => (
         <div key={node.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ color: 'var(--muted)', fontSize: 12 }}>→</span>
           <button onClick={() => setSelectedNode(selectedNodeId === node.id ? null : node.id)}

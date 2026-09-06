@@ -39,7 +39,7 @@ pub fn run() {
             cmd_discover_devices,
             cmd_connect_device,
             cmd_disconnect_device,
-            cmd_get_telemetry,
+            cmd_get_device_metadata,
             cmd_scan,
             cmd_start_acquisition,
             cmd_stop_acquisition,

@@ -3,7 +3,6 @@ import { useChemStore }  from '../../store/chemStore';
 import { useSessionStore}from '../../store/sessionStore';
 import { WorkspaceShell }from '../../components/layout/WorkspaceShell';
 import { Button }        from '../../components/design/Button';
-import { StaticChart }   from '../../spectrum/StaticChart';
 
 // ── Shared tab header ──────────────────────────────────────────
 const TABS = ['explore', 'classify', 'regress', 'predict', 'mixture'] as const;
@@ -81,7 +80,7 @@ function ExploreTab() {
 
 // ── Regress ───────────────────────────────────────────────────
 function RegressTab() {
-  const { regressionResult, isRunning, isTraining, nComponents, setComponents, trainModel } = useChemStore();
+  const { regressionResult, isTraining, nComponents, setComponents, trainModel } = useChemStore();
   const { captures } = useSessionStore();
 
   function handleTrain() {

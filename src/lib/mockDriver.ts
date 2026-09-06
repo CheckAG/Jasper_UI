@@ -4,7 +4,7 @@
 // Replaced by Tauri IPC in Phase 4.
 // ============================================================
 
-import type { AcqParams, Spectrum, Telemetry, DeviceInfo } from './types';
+import type { AcqParams, Spectrum, DeviceInfo } from './types';
 
 type BandDef = [number, number, number]; // [center_nm, width_nm, height]
 
@@ -59,17 +59,6 @@ export function sampleCapture(params: AcqParams, t: number): Spectrum {
   return generateSpectrum(params, t);
 }
 
-export function getMockTelemetry(): Telemetry {
-  return {
-    deviceId: 'SPEC-A4',
-    tempC: 42.1 + (Math.random() - 0.5) * 0.4,
-    lampHours: 1280,
-    driftSigma: 0.42,
-    headroom: 87,
-    queueDepth: 0,
-    timestamp: Date.now(),
-  };
-}
 
 export function getMockDevices(): DeviceInfo[] {
   return [
