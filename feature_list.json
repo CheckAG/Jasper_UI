@@ -10,9 +10,9 @@
       "title": "Hide Analyze and Chemometrics behind a feature flag",
       "type": "feature",
       "priority": "P1",
-      "status": "todo",
+      "status": "in-review",
       "issue": 2,
-      "branch": null,
+      "branch": "feature/2_hide-analyze-chemometrics",
       "depends_on": [],
       "summary": "Narrow the product to Acquire + Instrument without deleting any code. One exported flag gates the rail, the command palette and the render branches.",
       "files": [
@@ -77,7 +77,7 @@
       "title": "Probe-based device discovery and runtime connect/disconnect",
       "type": "feature",
       "priority": "P1",
-      "status": "in-review",
+      "status": "done",
       "issue": 5,
       "branch": "feature/5_device-discovery",
       "depends_on": [
@@ -178,7 +178,7 @@
       "title": "Instrument panel: report real device metadata instead of fake telemetry",
       "type": "fix",
       "priority": "P1",
-      "status": "in-review",
+      "status": "done",
       "issue": 9,
       "branch": "feature/9_device-metadata-panel",
       "depends_on": [
@@ -202,7 +202,7 @@
       "title": "Real diagnostics log",
       "type": "fix",
       "priority": "P2",
-      "status": "in-review",
+      "status": "done",
       "issue": 10,
       "branch": "feature/5_device-discovery",
       "depends_on": [
@@ -236,9 +236,8 @@
         "src/workspaces/instrument/InstrumentWorkspace.tsx",
         "src/workspaces/acquire/ModeStrip.tsx"
       ],
-      "notes": "CalibrationPanel drops the warn string into console.warn at InstrumentWorkspace.tsx:25 — toast it instead; the backend already computes useful warnings ('is the light off?', 'near saturation', 'signal low') at commands/instrument.rs:193-239. ModeStrip.tsx:45 toggles refState directly without calling any calibration IPC: either wire the chips to ipc.calibrateDark / ipc.calibrateReference, or make them read-only indicators.",
+      "notes": "CalibrationPanel drops the warn string into console.warn at InstrumentWorkspace.tsx:25 — toast it instead; the backend already computes useful warnings ('is the light off?', 'near saturation', 'signal low') at commands/instrument.rs:193-239. ModeStrip.tsx:45 toggles refState directly without calling any calibration IPC: either wire the chips to ipc.calibrateDark / ipc.calibrateReference, or make them read-only indicators. PARTIALLY DONE in #5: calibration warnings and errors now toast instead of going to console.warn/console.error. Remaining: ModeStrip.tsx:45's dark/reference chips still toggle refState without calling any calibration IPC.",
       "acceptance": [
-        "Calibrating with the light on raises a visible toast, not a console line",
         "The dark/reference chips reflect real calibration state"
       ]
     },

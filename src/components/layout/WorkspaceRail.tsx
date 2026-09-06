@@ -1,14 +1,7 @@
 import { useState } from 'react';
 import { useSessionStore } from '../../store/sessionStore';
 import { useUIStore }      from '../../store/uiStore';
-import type { WorkspaceId } from '../../lib/types';
-
-const WS_ITEMS: { id: WorkspaceId; label: string }[] = [
-  { id: 'instrument',   label: 'Instrument' },
-  { id: 'acquire',      label: 'Acquire' },
-  { id: 'analyze',      label: 'Analyze' },
-  { id: 'chemometrics', label: 'Chemometrics' },
-];
+import { WORKSPACES }    from '../../lib/features';
 
 export function WorkspaceRail() {
   const { sessions, activeId, setActiveSession, deleteSession } = useSessionStore();
@@ -32,7 +25,7 @@ export function WorkspaceRail() {
         letterSpacing: '0.12em', color: 'var(--muted)', padding: '12px 10px 6px' }}>
         Workspaces
       </div>
-      {WS_ITEMS.map(ws => (
+      {WORKSPACES.map(ws => (
         <button key={ws.id} onClick={() => setWorkspace(ws.id)} style={{
           display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px',
           borderRadius: 8, border: 0,
