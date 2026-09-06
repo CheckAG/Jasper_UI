@@ -117,6 +117,8 @@ def main():
                     help="what the sensor is looking at (default: lines)")
     ap.add_argument("--no-delay", action="store_true",
                     help="reply to ACQUIRE instantly instead of taking 2x the integration time")
+    ap.add_argument("--mute", action="store_true",
+                    help="hold the pty open but never reply, for testing the host's timeout path")
     args = ap.parse_args()
 
     master, slave = pty.openpty()
@@ -148,6 +150,8 @@ def main():
             if not line:
                 continue  # an empty transfer is ignored and produces no reply
 
+            if args.mute:
+                continue
             cmd = line[:1].upper()
             if cmd in (b"?", b"*"):
                 reply = build_frame(TYPE_IDN, IDN, seq, integ_ms)

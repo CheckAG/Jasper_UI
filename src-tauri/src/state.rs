@@ -1,7 +1,7 @@
 use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
 use std::sync::Arc;
 use crate::instrument::mock::MockDriver;
-use crate::instrument::serial::SerialDriver;
+use crate::instrument::tcd1304::Tcd1304Driver;
 use crate::instrument::driver::SpectrumDriver;
 use crate::commands::sidecar::SidecarHolder;
 
@@ -42,15 +42,16 @@ impl AppState {
 
         eprintln!("[AppState] sidecar script: {script_path}");
 
-        // JASPER_PORT=/dev/ttyACM0 (or a protocol-sim pty) selects the real
-        // PROTOCOL.md serial driver; unset → mock.
+        // JASPER_PORT=/dev/ttyACM0 (or a tcd1304-sim pty) selects the real
+        // TCD1304 driver; unset → mock. A pty carries no VID/PID, so the
+        // simulator is only reachable through this override.
         let driver: Box<dyn SpectrumDriver + Send> = match std::env::var("JASPER_PORT") {
             Ok(port) if !port.trim().is_empty() => {
-                eprintln!("[AppState] instrument driver: serial on {port}");
-                Box::new(SerialDriver::new(port.trim().to_string()))
+                eprintln!("[AppState] instrument driver: TCD1304 on {port}");
+                Box::new(Tcd1304Driver::new(port.trim().to_string()))
             }
             _ => {
-                eprintln!("[AppState] instrument driver: mock (set JASPER_PORT for serial)");
+                eprintln!("[AppState] instrument driver: mock (set JASPER_PORT for hardware)");
                 Box::new(MockDriver::new())
             }
         };
