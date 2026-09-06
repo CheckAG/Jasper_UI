@@ -10,11 +10,20 @@
 // ── Rust: instrument ──────────────────────────────────────────────────────────
 
 export interface DeviceRowDTO {
-  id:     string;
-  name:   string;
-  model:  string;
-  status: string;
-  temp_c: number;
+  id:       string;
+  name:     string;
+  model:    string;
+  status:   string;
+  serial:   string;
+  firmware: string;
+}
+
+/** Mirrors `DiagEntry` in src-tauri/src/instrument/driver.rs. */
+export interface DiagEntryDTO {
+  id:       string;
+  ts:       number;
+  severity: string;
+  message:  string;
 }
 
 /** Mirrors `DeviceMetadata` in src-tauri/src/instrument/driver.rs. */

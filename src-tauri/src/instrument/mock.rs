@@ -100,25 +100,15 @@ impl MockDriver {
 }
 
 impl SpectrumDriver for MockDriver {
+    /// Nothing. The mock exists so the canvas has a signal without hardware;
+    /// it is not an instrument you can connect to, and listing it as one is how
+    /// invented devices ended up in the UI in the first place.
     fn device_list(&self) -> Vec<DeviceInfo> {
-        vec![
-            DeviceInfo {
-                id: "SPEC-A4".into(), name: "SPEC-A4".into(),
-                model: "JASPER-NIR-1".into(),
-                status: if self.connected && self.device_id == "SPEC-A4" {
-                    "connected".into()
-                } else {
-                    "disconnected".into()
-                },
-                temp_c: 42.1,
-            },
-            DeviceInfo {
-                id: "SPEC-B2".into(), name: "SPEC-B2".into(),
-                model: "JASPER-NIR-1".into(),
-                status: "disconnected".into(),
-                temp_c: 38.4,
-            },
-        ]
+        Vec::new()
+    }
+
+    fn is_connected(&self) -> bool {
+        self.connected
     }
 
     fn connect(&mut self, device_id: &str) -> Result<(), String> {

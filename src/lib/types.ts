@@ -127,11 +127,14 @@ export interface Method {
 
 // --- Device ---
 export interface DeviceInfo {
-  id:     string;
-  name:   string;
-  model:  string;
-  status: 'connected' | 'disconnected' | 'fault';
-  tempC:  number;
+  /** Port path — what connectDevice takes. */
+  id:       string;
+  name:     string;
+  model:    string;
+  /** 'online' for the connected device, 'available' for one that answered a probe. */
+  status:   'online' | 'available';
+  serial:   string;
+  firmware: string;
 }
 
 export interface DeviceEvent {

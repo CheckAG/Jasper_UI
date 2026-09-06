@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{AppHandle, State, Emitter};
 use crate::state::AppState;
-use crate::instrument::driver::{AcqParams, DeviceInfo, CalResult, XCalResult};
+use crate::instrument::driver::{AcqParams, DeviceInfo, CalResult, XCalResult, SpectrumDriver};
 use crate::instrument::process::{self, CalFrame};
 
 /// Scans averaged into a stored dark/reference frame.
@@ -21,26 +21,68 @@ where
 
 // ── Device management ─────────────────────────────────────────────────────────
 
+/// Every instrument the host can see.
+///
+/// Ports are probed with the protocol handshake — nothing is listed that did not
+/// answer as a TCD1304, so this returns an empty list when no hardware is
+/// attached rather than placeholders.
 #[tauri::command]
 pub async fn cmd_discover_devices(
     state: State<'_, AppState>,
 ) -> Result<Vec<DeviceInfo>, String> {
     let driver = Arc::clone(&state.driver);
     run_blocking(move || {
-        let driver = driver.lock().map_err(|e| e.to_string())?;
-        Ok(driver.device_list())
+        // The connected device comes from the live driver, which knows its own
+        // identity without reopening anything. Everything else is found by
+        // probing — including when the session started with no hardware, so a
+        // board plugged in later is still reachable.
+        let mine = driver.lock().map_err(|e| e.to_string())?.device_list();
+        let connected: Option<String> = mine.first().map(|d| d.id.clone());
+        let mut all = mine;
+        all.extend(crate::instrument::tcd1304::discover(connected.as_deref()));
+        Ok(all)
     })
     .await
 }
 
+/// Connect to a device by port path.
+///
+/// Swaps the live driver, so a session that started with no hardware can pick
+/// up a board plugged in later — and so a port typed in by hand works exactly
+/// like a discovered one. `"mock"` selects the simulated driver.
 #[tauri::command]
 pub async fn cmd_connect_device(
     state: State<'_, AppState>,
     device_id: String,
 ) -> Result<(), String> {
+    state.stop_acquisition();
     let driver = Arc::clone(&state.driver);
     run_blocking(move || {
-        driver.lock().map_err(|e| e.to_string())?.connect(&device_id)
+        let mut slot = driver.lock().map_err(|e| e.to_string())?;
+        slot.disconnect();
+
+        let mut next: Box<dyn SpectrumDriver + Send> = if device_id == "mock" {
+            Box::new(crate::instrument::mock::MockDriver::new())
+        } else {
+            Box::new(crate::instrument::tcd1304::Tcd1304Driver::new(device_id.clone()))
+        };
+        // Handshake before adopting it: a failed connect must leave the previous
+        // driver in place rather than swapping in one that cannot talk.
+        next.connect(&device_id)?;
+        *slot = next;
+        Ok(())
+    })
+    .await
+}
+
+/// Recent instrument events. Empty until something has happened.
+#[tauri::command]
+pub async fn cmd_get_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::instrument::driver::DiagEntry>, String> {
+    let driver = Arc::clone(&state.driver);
+    run_blocking(move || {
+        Ok(driver.lock().map_err(|e| e.to_string())?.diagnostics())
     })
     .await
 }
@@ -187,6 +229,13 @@ pub async fn cmd_calibrate_dark(
     let driver = Arc::clone(&state.driver);
     let calibration = Arc::clone(&state.calibration);
     run_blocking(move || {
+        {
+            let d = driver.lock().map_err(|e| e.to_string())?;
+            if !d.is_connected() {
+                return Err(crate::instrument::tcd1304::NOT_CONNECTED.to_string());
+            }
+        }
+
         let avg = {
             let driver = driver.lock().map_err(|e| e.to_string())?;
             driver.calibrate_dark(&params)?; // device-specific hook (mock UX delay)
@@ -219,6 +268,13 @@ pub async fn cmd_calibrate_reference(
     let driver = Arc::clone(&state.driver);
     let calibration = Arc::clone(&state.calibration);
     run_blocking(move || {
+        {
+            let d = driver.lock().map_err(|e| e.to_string())?;
+            if !d.is_connected() {
+                return Err(crate::instrument::tcd1304::NOT_CONNECTED.to_string());
+            }
+        }
+
         let avg = {
             let driver = driver.lock().map_err(|e| e.to_string())?;
             driver.calibrate_reference(&params)?;
@@ -256,6 +312,13 @@ pub async fn cmd_calibrate_xcal(
 ) -> Result<XCalResult, String> {
     let driver = Arc::clone(&state.driver);
     run_blocking(move || {
+        {
+            let d = driver.lock().map_err(|e| e.to_string())?;
+            if !d.is_connected() {
+                return Err(crate::instrument::tcd1304::NOT_CONNECTED.to_string());
+            }
+        }
+
         driver.lock().map_err(|e| e.to_string())?.calibrate_xcal()
     })
     .await

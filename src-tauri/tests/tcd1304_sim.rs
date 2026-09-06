@@ -263,13 +263,22 @@ fn driver_handshakes_and_scans() {
     assert_eq!(after.dropped_frames, 0);
 
     drv.disconnect();
-    assert_eq!(drv.device_list()[0].status, "offline");
+    // Not device_list(): that now probes the machine's real serial ports, so
+    // what it returns depends on what is plugged in. Metadata is the
+    // machine-independent statement that we are no longer connected.
+    assert!(drv.device_metadata().is_none(), "disconnect should clear the cached identity");
+
+    // The driver logged the connect and the disconnect.
+    let diag = drv.diagnostics();
+    assert!(diag.iter().any(|d| d.message.contains("connected")), "{diag:?}");
+    assert!(diag.iter().any(|d| d.message.contains("disconnected")), "{diag:?}");
 }
 
 #[test]
 fn driver_reports_the_clamped_integration_the_device_applied() {
     let (_sim, pty) = spawn_sim(&["--scene", "flat", "--no-delay"]);
-    let drv = Tcd1304Driver::new(pty);
+    let mut drv = Tcd1304Driver::new(pty);
+    drv.connect("").expect("handshake");
     // 3 ms is below the device floor; the scan must still succeed, using the
     // clamped value the ACK reported rather than what was asked for.
     let frame = drv.scan(&params(3)).expect("scan below the floor still works");
@@ -277,12 +286,27 @@ fn driver_reports_the_clamped_integration_the_device_applied() {
 }
 
 #[test]
-fn driver_opens_lazily_without_an_explicit_connect() {
+fn a_disconnected_driver_refuses_to_work_instead_of_connecting_itself() {
+    // This used to open the port on first use, so pressing "Run" on a
+    // calibration with no instrument selected quietly connected and captured.
+    // Connecting is the operator's decision.
     let (_sim, pty) = spawn_sim(&["--scene", "flat", "--no-delay"]);
-    let drv = Tcd1304Driver::new(pty);
-    assert!(drv.device_metadata().is_none(), "nothing cached before the first use");
-    drv.scan(&params(8)).expect("scan should open the port on demand");
-    assert!(drv.device_metadata().is_some());
+    let mut drv = Tcd1304Driver::new(pty);
+
+    assert!(!drv.is_connected());
+    let err = drv.scan(&params(8)).expect_err("a scan must not connect on its own");
+    assert!(err.contains("No instrument connected"), "unhelpful error: {err}");
+    assert!(drv.device_metadata().is_none(), "and nothing should have been opened");
+
+    // The same call works once connecting is asked for explicitly.
+    drv.connect("").expect("handshake");
+    assert!(drv.is_connected());
+    drv.scan(&params(8)).expect("scan after an explicit connect");
+
+    // ...and stops working again after disconnect.
+    drv.disconnect();
+    assert!(!drv.is_connected());
+    assert!(drv.scan(&params(8)).is_err(), "a disconnected driver must stay refused");
 }
 
 #[test]
@@ -298,7 +322,8 @@ fn driver_refuses_a_device_that_is_not_a_tcd1304() {
 #[test]
 fn driver_declines_wavelength_calibration_rather_than_inventing_it() {
     let (_sim, pty) = spawn_sim(&["--scene", "flat", "--no-delay"]);
-    let drv = Tcd1304Driver::new(pty);
+    let mut drv = Tcd1304Driver::new(pty);
+    drv.connect("").expect("handshake");
     // The device stores no wavelength calibration; fitting one is E5.
     assert!(drv.calibrate_xcal().is_err());
 }
@@ -386,4 +411,21 @@ fn real_hardware_handshake_and_capture() {
     assert!(after.last_capture_ms > 0);
 
     drv.disconnect();
+}
+
+#[test]
+#[ignore = "requires a TCD1304 attached to a real serial port"]
+fn real_hardware_is_found_by_probing() {
+    // No JASPER_PORT, no VID/PID: enumerate the machine's serial ports, open
+    // each, and keep whatever answers the handshake as a TCD1304.
+    let found = jasper_lib::instrument::tcd1304::discover(None);
+    for d in &found {
+        println!("  {} — {} serial {} firmware {}", d.id, d.model, d.serial, d.firmware);
+    }
+    assert!(!found.is_empty(), "no TCD1304 found on any serial port");
+    let d = &found[0];
+    assert_eq!(d.model, "TCD1304");
+    assert_eq!(d.status, "available", "not connected yet, just seen");
+    assert_eq!(d.serial.len(), 16);
+    assert!(d.name.starts_with("TCD1304 · "), "friendly name was {:?}", d.name);
 }

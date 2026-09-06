@@ -13,13 +13,13 @@ import { listen  } from '@tauri-apps/api/event';
 
 import { generateSpectrum } from './mockDriver';
 import type {
-  AcqParams, Spectrum, DeviceInfo, DeviceEvent, DeviceMetadata,
+  AcqParams, Spectrum, DeviceInfo, DeviceEvent, DeviceMetadata, DiagEntry,
   CalResult, XCalResult, PipelineNode, PipelineResult,
   ChemAlgorithm, ModelMeta, PCAResult, RegressionResult,
   PredictionResult, MixtureResult, Session, Capture,
 } from './types';
 import type {
-  DeviceRowDTO, DeviceMetadataDTO, FrameDTO, CalResultDTO, XCalResultDTO,
+  DeviceRowDTO, DiagEntryDTO, DeviceMetadataDTO, FrameDTO, CalResultDTO, XCalResultDTO,
   SessionRowDTO, CaptureRowDTO, ManifestNodeDTO, PipelineResultDTO,
   ReloadPluginsDTO, PCAResultDTO, TrainResultDTO, PredictionResultDTO,
   MixtureResultDTO,
@@ -101,28 +101,22 @@ function mockRegression(n: number): RegressionResult {
   return { predicted, actual, rmsep, r2: 0.94, bias: 0.03, nComponents: 4 };
 }
 
-const _diagLog = [
-  { id: 'd1', ts: Date.now() - 90000, severity: 'info' as const,  message: 'Device SPEC-A4 connected' },
-  { id: 'd2', ts: Date.now() - 60000, severity: 'info' as const,  message: 'Dark calibration OK (SNR 412)' },
-  { id: 'd3', ts: Date.now() - 30000, severity: 'info' as const,  message: 'Reference calibration OK' },
-  { id: 'd4', ts: Date.now() - 5000,  severity: 'warn' as const,  message: 'Detector temp +0.3°C above baseline' },
-];
-
 // ── IPC object ─────────────────────────────────────────────────────────────────
 
 export const ipc = {
 
   // ── Instrument ──────────────────────────────────────────────────────────────
 
+  /** Instruments that answered a protocol handshake. Empty when none are
+   *  attached — the browser has no serial ports at all, so it lists nothing
+   *  rather than inventing devices. */
   discoverDevices: (): Promise<DeviceInfo[]> => IS_TAURI
     ? tauriInvoke<DeviceRowDTO[]>('cmd_discover_devices').then(ds => ds.map(d => ({
         id: d.id, name: d.name, model: d.model,
-        status: d.status as DeviceInfo['status'], tempC: d.temp_c,
+        status: d.status as DeviceInfo['status'],
+        serial: d.serial, firmware: d.firmware,
       })))
-    : Promise.resolve([
-        { id: 'SPEC-A4', name: 'SPEC-A4', model: 'JASPER-NIR-1', status: 'connected', tempC: 42.1 },
-        { id: 'SPEC-B2', name: 'SPEC-B2', model: 'JASPER-NIR-1', status: 'disconnected', tempC: 38.4 },
-      ]),
+    : Promise.resolve([]),
 
   connectDevice: (deviceId: string): Promise<void> => IS_TAURI
     ? tauriInvoke('cmd_connect_device', { deviceId })
@@ -143,12 +137,7 @@ export const ipc = {
         droppedFrames: m.dropped_frames, lastCaptureMs: m.last_capture_ms,
         timestamp: m.timestamp,
       }))
-    : Promise.resolve({
-        port: 'browser', manufacturer: 'JASPER', model: 'JASPER-NIR-1', serial: 'SPEC-A4',
-        firmware: 'mock', protocolVersion: 0, pixels: 320, integMinMs: 5, integMaxMs: 500,
-        maxIntensity: 65535, sensor: 'simulated', lastSeq: 0, droppedFrames: 0,
-        lastCaptureMs: 0, timestamp: Date.now(),
-      }),
+    : Promise.resolve(null),
 
   scan: (params: AcqParams): Promise<Spectrum> => IS_TAURI
     ? tauriInvoke<FrameDTO>('cmd_scan', { params: toRustParams(params) })
@@ -182,7 +171,14 @@ export const ipc = {
     : new Promise(resolve => setTimeout(() =>
         resolve({ status: 'ok', rms: 0.018, coefficients: [400, 1.6], peaksFound: 12 }), 1400)),
 
-  getDiagnostics: () => Promise.resolve([..._diagLog]),
+  /** Instrument events, newest last. Empty until something has happened. */
+  getDiagnostics: (): Promise<DiagEntry[]> => IS_TAURI
+    ? tauriInvoke<DiagEntryDTO[]>('cmd_get_diagnostics').then(es => es.map(e => ({
+        id: e.id, ts: e.ts,
+        severity: e.severity as DiagEntry['severity'],
+        message: e.message,
+      })))
+    : Promise.resolve([]),
 
   // ── Storage ─────────────────────────────────────────────────────────────────
 

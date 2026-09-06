@@ -77,9 +77,9 @@
       "title": "Probe-based device discovery and runtime connect/disconnect",
       "type": "feature",
       "priority": "P1",
-      "status": "todo",
+      "status": "in-review",
       "issue": 5,
-      "branch": null,
+      "branch": "feature/5_device-discovery",
       "depends_on": [
         "E2b"
       ],
@@ -202,9 +202,9 @@
       "title": "Real diagnostics log",
       "type": "fix",
       "priority": "P2",
-      "status": "todo",
+      "status": "in-review",
       "issue": 10,
-      "branch": null,
+      "branch": "feature/5_device-discovery",
       "depends_on": [
         "E2b"
       ],
