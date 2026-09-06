@@ -45,15 +45,18 @@ Clean. The doc catch-up after #4 merged is committed on `master` (`8f8fbb0`), no
 
 ## Learned this session
 
-- **The board disagrees with the reference GUI about polarity.** The PyQt6 app inverts
-  (`max_intensity - raw`) because raw CCD video reads high in the dark. This hardware does
-  not: an unilluminated frame sits at ~2500 of 32767, near the floor. Inverting would render
-  darkness as ~30,267, near full scale. `to_intensity()` is now the identity, with the
-  evidence written above it. **Not proven** — it needs a controlled light/dark pair, which is
-  still the open physical test. One line to flip if a lamp capture disagrees.
-- **The `DARK=16:28` window is still unconfirmed.** Under ambient dark, `DARK` mean (2588)
-  and `ACTIVE` mean (2565) are within noise of each other, which proves nothing either way.
-  Needs light to test.
+- **Polarity is settled: the video IS inverted, and the host applies `max_intensity - raw`.**
+  With a light source attached, comparing the masked `DARK` window against the illuminated
+  `ACTIVE` window *within a single frame*: masked pixels stay pinned near 29300 at every
+  integration time, while illuminated pixels read 28099 / 20866 / 16100 at 8 / 50 / 200 ms.
+  Light pulls the value down.
+  **This overturned an earlier call in the same session.** An unlit probe had read ~2500 across
+  the whole array and I took that as "bright is high". Masked pixels cannot respond to
+  illumination, so a whole-array shift was never an illumination effect — something in the
+  detector's power or clocking state differed between sessions, and the unlit number said
+  nothing about polarity. Compare regions within one frame, never frames across sessions.
+- **`DARK=16:28` is confirmed real.** The same measurement: the masked window holds the dark
+  level while `ACTIVE` responds to light. That is exactly the check the hardware repo asked for.
 - **A pty must be set raw at both ends.** In cooked mode `ONLCR` rewrites every `0x0A` as
   `CR LF`, and `integ_ms = 10` puts a `0x0A` in the header of most replies — frames arrive
   one byte long and the reader desyncs. Cost an hour.
@@ -68,9 +71,6 @@ Clean. The doc catch-up after #4 merged is committed on `master` (`8f8fbb0`), no
 
 ## Blocked / needs a human
 
-- **The light/dark polarity test.** Cover the sensor, capture; illuminate it, capture; compare
-  `ACTIVE` means. Settles both the inversion question and whether `DARK=16:28` is real. Until
-  then both carry `ponytail:` comments naming the uncertainty.
 - **PRs are opened by hand** (no `gh`, read-only token). Push happens from here.
 - **A neon or mercury-argon lamp** will be needed for #7 — the calibration fit has nothing to
   match against without known emission lines.

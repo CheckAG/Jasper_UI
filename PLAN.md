@@ -8,9 +8,14 @@ for anything this plan does not restate.
 
 ## Status
 
-**Done:** E2a (#3) frame codec · E6 (#8) pty simulator · E2b (#4) driver — verified
-against real hardware, serial `380B1C3537323731`.
-**Next:** E3 (#5), E4 (#6) and E7a (#9) are unblocked and independent of each other.
+**Done:** E2a (#3) frame codec · E6 (#8) pty simulator · E2b (#4) driver.
+**In review:** E7a (#9) device metadata panel · sample polarity fix.
+**Next:** E3 (#5) and E4 (#6) are unblocked and independent of each other.
+
+**Settled on hardware** (serial `380B1C3537323731`): the video is inverted — masked pixels read
+high, light pulls the value down — so the host applies `max_intensity - raw`. The same
+measurement confirms `DARK=16:28` is a real masked window: it holds the dark level while
+`ACTIVE` responds to light.
 
 ---
 
@@ -103,13 +108,15 @@ so nothing above it changes shape.
   `fields[1] == "TCD1304"`, then `M\n` and cache the parsed metadata.
 - **`scan()`**: push `I<ms>` only when the value changed (keep the existing lazy-push idea from
   `serial.rs:199`), then `A\n`, then read one SPECTRUM with the `3×T+500 ms` timeout.
-- **Samples**: `i16::from_le_bytes`, **not inverted**. The plan originally said to apply
-  `max_intensity - raw`, copying the reference GUI's default-on "Invert" (raw CCD video reads
-  high in the dark). Measurement overruled it: an unilluminated frame on serial
-  `380B1C3537323731` sat between 1982 and 2921 of a 32767 range — near the floor, not the
-  ceiling — so inverting would render darkness as ~30,267. Saturation still comes from metadata
-  `MAX_INTENSITY`, never a hardcoded constant. Unproven without a controlled light/dark pair;
-  `to_intensity()` is the single place to flip.
+- **Samples**: `i16::from_le_bytes`, then **inverted** — `ys[i] = max_intensity - raw[i]`, as
+  the reference GUI's default-on "Invert" does. Confirmed on serial `380B1C3537323731` with a
+  light source, comparing the masked `DARK` window against the illuminated `ACTIVE` window
+  **within the same frame**: masked pixels stay pinned near 29300 at every integration time
+  while illuminated ones read 28099 / 20866 / 16100 at 8 / 50 / 200 ms. Light pulls the value
+  down, so dark is high. (An earlier unlit probe read ~2500 across the whole array, masked
+  pixels included, and was briefly taken as evidence of the opposite; masked pixels cannot
+  respond to light, so that was never an illumination effect.) Saturation still comes from
+  metadata `MAX_INTENSITY`, never a hardcoded constant.
 - **`status` bit 0** = dropped frame: surface it, do not discard the frame — it is valid, just one
   integration period late. Mask bit 0 specifically; bits 4–6 are earmarked for a future state machine.
 - Keep `crc16_ccitt` from the old `serial.rs:25` verbatim — same algorithm, and it is already tested.
@@ -270,9 +277,6 @@ which is the whole point of running it in CI. Packaging can wait; compiling and 
 ## Deferred
 
 - Analyze, Chemometrics, and everything in the Python sidecar.
-- `DARK=16:28` from metadata is **unconfirmed against hardware** — the hardware repo flags it, and
-  wrong indices silently bias every dark-corrected spectrum. Confirm with a capped sensor before
-  using the dark window for per-frame correction.
 - Dark/reference frames are in-memory only (`state.rs:19`) and lost on restart; `CalFrame.integration_ms`
   is recorded but never checked at apply time (`process.rs:65`).
 - Firmware roadmap items that will move the wire without a version bump: new `M` keys

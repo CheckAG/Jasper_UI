@@ -35,23 +35,40 @@ fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
 }
 
-/// Raw counts to intensity. Currently the identity — the front end already
-/// delivers bright-as-high, so nothing is inverted here.
+/// Raw counts to intensity: `max_intensity - raw`.
 ///
-/// ponytail: the reference PyQt6 GUI inverts (`max_intensity - raw`) with a
-/// default-on "Invert" box, because raw CCD video reads high in the dark. This
-/// hardware does not behave that way. Probed 2026-09-06 on serial
-/// 380B1C3537323731 with no illumination: every pixel sat between 1982 and 2921
-/// of a 32767 range — a dark frame near the *floor*, not the ceiling. Inverting
-/// would render "no light" as ~30,267, near full scale. It also matches
-/// PROTOCOL.md, which says a saturated pixel rolls past 0x7FFF and reads
-/// negative — i.e. bright means high.
+/// This video is inverted — a masked pixel reads HIGH and light pulls the value
+/// down — so the host has to flip it, exactly as the PyQt6 reference does with
+/// its default-on "Invert".
 ///
-/// Not proven: that probe was ambient-dark, not a controlled light/dark pair.
-/// If a lamp capture ever comes back inverted, this function is the only place
-/// to change — flip to `max_intensity - raw`.
-fn to_intensity(raw: i16, _max_intensity: i32) -> f32 {
-    raw as f32
+/// Measured 2026-09-06 on serial 380B1C3537323731 with a light source attached.
+/// Within a single frame, the masked DARK window (pixels 16-28, which no light
+/// reaches) against the ACTIVE window minimum:
+///
+/// ```text
+/// integration     DARK mean     ACTIVE min
+///       8 ms         29234          28099
+///      50 ms         29314          20866
+///     200 ms         29308          16100
+/// ```
+///
+/// The masked pixels stay pinned near 29300 whatever the integration time,
+/// while illuminated pixels read lower and fall further the longer the sensor
+/// integrates. Same frame, same conditions, differing only in whether light
+/// lands on them — so dark is high and bright is low.
+///
+/// After inversion a dark pixel is ~3400 and a strongly lit one ~16700, which
+/// is the right way round for display and for the (S-D)/(R-D) maths in
+/// process.rs.
+///
+/// This corrects an earlier reading of an unlit probe, where the whole array
+/// — masked pixels included — sat near 2500 and was taken as evidence that
+/// bright meant high. Masked pixels cannot respond to illumination, so that
+/// difference was never about light; something in the detector's power or
+/// clocking state differed between the two sessions. The within-frame
+/// comparison above does not depend on comparing sessions at all.
+fn to_intensity(raw: i16, max_intensity: i32) -> f32 {
+    (max_intensity - raw as i32) as f32
 }
 
 /// Saturation is judged on the raw sample: at or past `max_intensity`, or

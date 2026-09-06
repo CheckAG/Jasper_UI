@@ -143,11 +143,21 @@ fn handshake_and_capture_against_the_simulator() {
     let samples = first.samples().expect("spectrum samples");
     assert_eq!(samples.len(), PIXELS);
 
-    // The 'lines' scene puts emission peaks well above the baseline.
-    let peak = *samples.iter().max().unwrap();
-    let floor = *samples.iter().min().unwrap();
-    assert!(peak > 3000, "expected emission lines, peak was {peak}");
-    assert!(floor > 0, "the lines scene should not saturate; min was {floor}");
+    // Raw counts, before the host inverts them. The video is inverted: masked
+    // pixels read high and light pulls the value down, so an emission line is a
+    // DIP. Checked in-frame, masked window against the illuminated one — the
+    // same comparison that settled this on real hardware.
+    let dark_window: i32 =
+        samples[16..=28].iter().map(|&v| v as i32).sum::<i32>() / 13;
+    let brightest = *samples[32..3680].iter().min().unwrap() as i32;
+    assert!(
+        dark_window > 20_000,
+        "masked pixels should sit near the dark level, got {dark_window}"
+    );
+    assert!(
+        brightest < dark_window - 2_000,
+        "an emission line should read well BELOW the dark level: line {brightest} vs dark {dark_window}"
+    );
 
     // Each capture discards the in-progress frame, so seq advances by at least 2.
     let second = link.command("A\n", FrameType::Spectrum);
@@ -238,7 +248,15 @@ fn driver_handshakes_and_scans() {
     // xs is the pixel index until a wavelength calibration exists (E5).
     assert_eq!(frame.xs[0], 0.0);
     assert_eq!(frame.xs[PIXELS - 1], (PIXELS - 1) as f32);
-    assert!(frame.ys.iter().any(|&y| y > 3000.0), "the lines scene should show peaks");
+    // ys is inverted (max_intensity - raw), so a line is now a peak above a
+    // small dark baseline rather than a dip below a large one.
+    let baseline = frame.ys[16..=28].iter().sum::<f32>() / 13.0;
+    let peak = frame.ys[32..3680].iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    assert!(baseline > 0.0, "dark baseline should be positive after inversion, got {baseline}");
+    assert!(
+        peak > baseline + 2_000.0,
+        "an emission line should stand well above the dark baseline: peak {peak} vs baseline {baseline}"
+    );
 
     let after = drv.device_metadata().unwrap();
     assert!(after.last_seq > 0, "the header's seq should be recorded");
@@ -352,6 +370,15 @@ fn real_hardware_handshake_and_capture() {
 
         // A frame that is all one value means the link is echoing, not sensing.
         assert!(max > min, "spectrum is flat — no signal reached the host");
+
+        // Polarity evidence, in-frame: pixels 16-28 are masked on this sensor,
+        // so they see no light whatever the scene. After inversion they are the
+        // dark baseline and anything illuminated should sit above them. Printed
+        // rather than asserted, because with the lamp off there is nothing to
+        // rise above and that is not a failure.
+        let masked = frame.ys[16..=28].iter().sum::<f32>() / 13.0;
+        let lit = frame.ys[32..3680].iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        println!("       masked (dark) {masked:8.0}   brightest {lit:8.0}   signal {:+.0}", lit - masked);
     }
 
     let after = drv.device_metadata().unwrap();
