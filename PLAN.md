@@ -6,6 +6,14 @@ for anything this plan does not restate.
 
 ---
 
+## Status
+
+**Done:** E2a (#3) frame codec · E6 (#8) pty simulator · E2b (#4) driver — verified
+against real hardware, serial `380B1C3537323731`.
+**Next:** E3 (#5), E4 (#6) and E7a (#9) are unblocked and independent of each other.
+
+---
+
 ## Context
 
 The instrument protocol was unknown when JASPER was built, so `src-tauri/src/instrument/serial.rs`
@@ -95,9 +103,13 @@ so nothing above it changes shape.
   `fields[1] == "TCD1304"`, then `M\n` and cache the parsed metadata.
 - **`scan()`**: push `I<ms>` only when the value changed (keep the existing lazy-push idea from
   `serial.rs:199`), then `A\n`, then read one SPECTRUM with the `3×T+500 ms` timeout.
-- **Samples**: `i16::from_le_bytes`, then invert for display — `ys[i] = max_intensity - raw[i]`,
-  because CCD video reads high in the dark (this is what the reference GUI's default-on "Invert"
-  does). Saturation test comes from metadata `MAX_INTENSITY`, not a hardcoded constant.
+- **Samples**: `i16::from_le_bytes`, **not inverted**. The plan originally said to apply
+  `max_intensity - raw`, copying the reference GUI's default-on "Invert" (raw CCD video reads
+  high in the dark). Measurement overruled it: an unilluminated frame on serial
+  `380B1C3537323731` sat between 1982 and 2921 of a 32767 range — near the floor, not the
+  ceiling — so inverting would render darkness as ~30,267. Saturation still comes from metadata
+  `MAX_INTENSITY`, never a hardcoded constant. Unproven without a controlled light/dark pair;
+  `to_intensity()` is the single place to flip.
 - **`status` bit 0** = dropped frame: surface it, do not discard the frame — it is valid, just one
   integration period late. Mask bit 0 specifically; bits 4–6 are earmarked for a future state machine.
 - Keep `crc16_ccitt` from the old `serial.rs:25` verbatim — same algorithm, and it is already tested.

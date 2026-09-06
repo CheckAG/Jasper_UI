@@ -53,7 +53,7 @@
       "title": "Replace serial.rs with a TCD1304 SpectrumDriver",
       "type": "feature",
       "priority": "P0",
-      "status": "in-review",
+      "status": "done",
       "issue": 4,
       "branch": "feature/4_tcd1304-driver",
       "depends_on": [
@@ -155,7 +155,7 @@
       "title": "pty simulator for the TCD1304 protocol, and rewrite the integration test",
       "type": "feature",
       "priority": "P0",
-      "status": "in-review",
+      "status": "done",
       "issue": 8,
       "branch": "feature/8_tcd1304-pty-simulator",
       "depends_on": [
