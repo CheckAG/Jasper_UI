@@ -36,7 +36,21 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-density', density);
     initSessions();
-    const unlisten = ipc.onSpectrumFrame(setLiveSpectrum);
+    const unlisten = ipc.onSpectrumFrame(frame => {
+      setLiveSpectrum(frame);
+      // Report the frame rendered on the next paint, which is when it actually
+      // reaches the canvas. Until this lands the backend holds off capturing,
+      // so a slow render costs frame rate instead of accumulating a backlog.
+      requestAnimationFrame(() => { ipc.frameConsumed().catch(() => {}); });
+
+      // The device clamps integration to its own range and reports what it
+      // applied. Snap the control to the truth rather than leaving it showing a
+      // value the hardware refused. Converges in one step: the next frame comes
+      // back with the value we now hold.
+      const applied = frame.params.integration;
+      const { params: current, setParam: set } = useAcqStore.getState();
+      if (applied > 0 && applied !== current.integration) set('integration', applied);
+    });
     return () => {
       unlisten();
       ipc.stopAcquisition().catch(() => {});

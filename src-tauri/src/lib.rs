@@ -44,6 +44,7 @@ pub fn run() {
             cmd_scan,
             cmd_start_acquisition,
             cmd_stop_acquisition,
+            cmd_frame_consumed,
             cmd_calibrate_dark,
             cmd_calibrate_reference,
             cmd_calibrate_xcal,

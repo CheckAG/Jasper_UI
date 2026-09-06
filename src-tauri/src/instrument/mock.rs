@@ -125,7 +125,8 @@ impl SpectrumDriver for MockDriver {
     fn scan(&self, params: &AcqParams) -> Result<SpectrumFrame, String> {
         let (xs, ys) = self.generate(params, 0.0);
         // units "": pre-styled for the requested mode, not raw counts
-        Ok(SpectrumFrame { xs, ys, mode: params.mode.clone(), units: String::new(), timestamp: now_ms() })
+        Ok(SpectrumFrame { xs, ys, mode: params.mode.clone(), units: String::new(),
+                           integration_ms: params.integration, timestamp: now_ms() })
     }
 
     fn calibrate_dark(&self, _params: &AcqParams) -> Result<CalResult, String> {

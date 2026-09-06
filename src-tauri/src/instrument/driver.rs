@@ -48,6 +48,10 @@ pub struct SpectrumFrame {
     pub ys:        Vec<f32>,
     pub mode:      String,
     pub units:     String,
+    /// Integration time that actually produced this frame, in ms, as reported
+    /// by the device — not what was asked for. The device clamps to its own
+    /// range, so these differ whenever the request was out of bounds.
+    pub integration_ms: u32,
     pub timestamp: u64,
 }
 

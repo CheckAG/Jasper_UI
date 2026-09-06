@@ -148,6 +148,13 @@ export const ipc = {
     ? tauriInvoke('cmd_start_acquisition', { params: toRustParams(params) })
     : Promise.resolve(),
 
+  /** Tell the backend a streamed frame has been rendered, so it may capture the
+   *  next one. Without this the acquisition loop keeps emitting into a queue the
+   *  renderer is not draining and the displayed trace falls behind. */
+  frameConsumed: (): Promise<void> => IS_TAURI
+    ? tauriInvoke('cmd_frame_consumed')
+    : Promise.resolve(),
+
   stopAcquisition: (): Promise<void> => IS_TAURI
     ? tauriInvoke('cmd_stop_acquisition')
     : Promise.resolve(),
@@ -451,17 +458,20 @@ export const ipc = {
   onSpectrumFrame: (cb: (s: Spectrum) => void): (() => void) => {
     if (!IS_TAURI) return () => {};
     let unlisten: (() => void) | null = null;
-    listen<{ xs: number[]; ys: number[]; mode: string; units: string; timestamp: number }>('spectrum-frame', event => {
+    listen<FrameDTO>('spectrum-frame', event => {
       cb({
         xs: new Float32Array(event.payload.xs),
         ys: new Float32Array(event.payload.ys),
         timestamp: event.payload.timestamp,
         units: event.payload.units,
-        // Only `mode` matters downstream — LiveSpectrum uses store params for the
-        // rest and discards frames whose mode no longer matches the UI.
+        // Only `mode` and the applied integration matter downstream —
+        // LiveSpectrum uses store params for the rest and discards frames whose
+        // mode no longer matches the UI.
         params: {
           mode: (event.payload.mode || 'absorbance') as AcqParams['mode'],
-          acqMode: 'continuous', integration: 120, averaging: 4,
+          acqMode: 'continuous',
+          integration: event.payload.integration_ms,
+          averaging: 4,
           lightOn: true, lightPower: 80, xUnit: 'nm', yUnit: 'au', lockAxes: false, stack: false,
         },
       });
