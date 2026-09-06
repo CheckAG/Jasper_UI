@@ -33,7 +33,7 @@
       "title": "TCD1304 frame codec: envelope, CRC-16/CCITT, resyncing reader",
       "type": "feature",
       "priority": "P0",
-      "status": "in-review",
+      "status": "done",
       "issue": 3,
       "branch": "feature/3_tcd1304-frame-codec",
       "depends_on": [],
@@ -155,9 +155,9 @@
       "title": "pty simulator for the TCD1304 protocol, and rewrite the integration test",
       "type": "feature",
       "priority": "P0",
-      "status": "todo",
+      "status": "in-review",
       "issue": 8,
-      "branch": null,
+      "branch": "feature/8_tcd1304-pty-simulator",
       "depends_on": [
         "E2a"
       ],
@@ -248,7 +248,7 @@
       "type": "feature",
       "priority": "P2",
       "status": "todo",
-      "issue": null,
+      "issue": 13,
       "branch": null,
       "depends_on": [
         "E5"
@@ -274,7 +274,7 @@
       "type": "feature",
       "priority": "P2",
       "status": "todo",
-      "issue": null,
+      "issue": 14,
       "branch": null,
       "depends_on": [],
       "summary": "This repository has no CI. Nothing checks that a PR compiles.",
