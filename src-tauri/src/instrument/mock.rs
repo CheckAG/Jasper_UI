@@ -9,6 +9,13 @@ fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
 }
 
+/// Animation time in seconds. Wall-clock based so repeated `scan()` calls
+/// (the streaming loop goes through the driver trait) produce a moving
+/// spectrum. Wrapped at one day to stay within f32 precision.
+fn anim_t() -> f32 {
+    (now_ms() % 86_400_000) as f32 / 1000.0
+}
+
 /// Gaussian band: Σ h · exp(-(x-c)² / w²)
 fn gaussian(x: f32, center: f32, width: f32, height: f32) -> f32 {
     height * (-(x - center).powi(2) / width.powi(2)).exp()
@@ -78,17 +85,16 @@ pub fn synth_ys(params: &AcqParams, t: f32, xs: &[f32], seed_offset: f32) -> Vec
 pub struct MockDriver {
     pub connected: bool,
     pub device_id: String,
-    pub t: f32,  // animation time counter
 }
 
 impl MockDriver {
     pub fn new() -> Self {
-        Self { connected: false, device_id: String::new(), t: 0.0 }
+        Self { connected: false, device_id: String::new() }
     }
 
     fn generate(&self, params: &AcqParams, seed_offset: f32) -> (Vec<f32>, Vec<f32>) {
         let xs = synth_xs();
-        let ys = synth_ys(params, self.t, &xs, seed_offset);
+        let ys = synth_ys(params, anim_t(), &xs, seed_offset);
         (xs, ys)
     }
 }
@@ -128,13 +134,14 @@ impl SpectrumDriver for MockDriver {
 
     fn scan(&self, params: &AcqParams) -> Result<SpectrumFrame, String> {
         let (xs, ys) = self.generate(params, 0.0);
-        Ok(SpectrumFrame { xs, ys, mode: params.mode.clone(), timestamp: now_ms() })
+        // units "": pre-styled for the requested mode, not raw counts
+        Ok(SpectrumFrame { xs, ys, mode: params.mode.clone(), units: String::new(), timestamp: now_ms() })
     }
 
     fn telemetry(&self) -> Result<TelemetryData, String> {
         Ok(TelemetryData {
             device_id:   self.device_id.clone(),
-            temp_c:      42.1 + (self.t * 0.1).sin() * 0.3,
+            temp_c:      42.1 + (anim_t() * 0.1).sin() * 0.3,
             lamp_hours:  1280,
             drift_sigma: 0.42,
             headroom:    87.0,

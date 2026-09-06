@@ -26,3 +26,5 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs     = "2"
 tauri-plugin-sql    = { version = "2", features = ["sqlite"] }
 rusqlite    = { version = "0.31", features = ["bundled"] }
+# default-features off: we open ports by path only (no libudev enumeration)
+serialport  = { version = "4", default-features = false }

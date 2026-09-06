@@ -1,0 +1,248 @@
+{
+  "phase": "E",
+  "title": "Real TCD1304 hardware — Instrument + Acquire only",
+  "plan": "PLAN.md",
+  "updated": "2026-09-06",
+  "repo": "CheckAG/Jasper_UI",
+  "features": [
+    {
+      "id": "E1",
+      "title": "Hide Analyze and Chemometrics behind a feature flag",
+      "type": "feature",
+      "priority": "P1",
+      "status": "todo",
+      "issue": 2,
+      "branch": null,
+      "depends_on": [],
+      "summary": "Narrow the product to Acquire + Instrument without deleting any code. One exported flag gates the rail, the command palette and the render branches.",
+      "files": [
+        "src/lib/features.ts (new)",
+        "src/components/layout/WorkspaceRail.tsx",
+        "src/components/overlays/CommandPalette.tsx",
+        "src/App.tsx"
+      ],
+      "notes": "WS_ITEMS is duplicated in WorkspaceRail.tsx:6 and CommandPalette.tsx:6 — move it into features.ts and import in both. Do NOT delete store/analyzeStore.ts: ExportDialog.tsx:4 imports it.",
+      "acceptance": [
+        "Rail and Cmd-K palette list only Acquire and Instrument",
+        "Export dialog still opens and exports",
+        "Flipping the flag restores both workspaces with no other edit"
+      ]
+    },
+    {
+      "id": "E2a",
+      "title": "TCD1304 frame codec: envelope, CRC-16/CCITT, resyncing reader",
+      "type": "feature",
+      "priority": "P0",
+      "status": "todo",
+      "issue": 3,
+      "branch": null,
+      "depends_on": [],
+      "summary": "Pure parsing/encoding layer for protocol v1. Content-addressed framing, no position-based reads.",
+      "files": [
+        "src-tauri/src/instrument/tcd1304/frame.rs (new)"
+      ],
+      "notes": "16-byte header, little-endian: magic 'T','C' | version 0x01 | type | seq u16 | payload_len u16 | integ_ms u32 | status u16 | reserved u16. CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflection, no final XOR) over header+payload, stored LE. Reject version != 0x01, type outside 1..=5, payload_len > 7388 — on any rejection discard ONE byte and rescan. Keep crc16_ccitt from the old serial.rs:25 verbatim.",
+      "acceptance": [
+        "CRC check value for \"123456789\" is 0x29B1",
+        "A frame prefixed with garbage containing a false 'TC' still parses",
+        "A one-byte-truncated frame does not desync the reader permanently"
+      ]
+    },
+    {
+      "id": "E2b",
+      "title": "Replace serial.rs with a TCD1304 SpectrumDriver",
+      "type": "feature",
+      "priority": "P0",
+      "status": "todo",
+      "issue": 4,
+      "branch": null,
+      "depends_on": [
+        "E2a"
+      ],
+      "summary": "Delete the specbench driver and implement the same SpectrumDriver trait against the real protocol.",
+      "files": [
+        "src-tauri/src/instrument/tcd1304/mod.rs (new)",
+        "src-tauri/src/instrument/serial.rs (delete)",
+        "src-tauri/src/instrument/mod.rs"
+      ],
+      "notes": "Handshake: X\\n, 50ms, flush, *IDN?\\n (require 4 comma fields, fields[1]==\"TCD1304\"), M\\n and cache metadata. scan(): push I<ms> only on change, then A\\n, read one SPECTRUM with a 3*integ_ms+500ms timeout (1s for everything else); clear the whole RX buffer on timeout. Samples are SIGNED i16 LE, 3694 of them; invert for display as max_intensity - raw (CCD video reads high in the dark). Saturation comes from metadata MAX_INTENSITY, never a constant. Surface status bit 0 (DROPPED) — the frame is valid, just one integration late; mask bit 0 specifically, bits 4-6 are reserved for a future state machine. Ignore unknown METADATA keys. An ERR frame is an Err regardless of the awaited type.",
+      "acceptance": [
+        "cargo test passes against the simulator from E6",
+        "Unknown METADATA keys do not break the parse",
+        "A saturated pixel is reported as saturated, not as a large positive value"
+      ]
+    },
+    {
+      "id": "E3",
+      "title": "Probe-based device discovery and runtime connect/disconnect",
+      "type": "feature",
+      "priority": "P1",
+      "status": "todo",
+      "issue": 5,
+      "branch": null,
+      "depends_on": [
+        "E2b"
+      ],
+      "summary": "Find the spectrometer by asking it who it is, and make the UI Connect button actually open the port.",
+      "files": [
+        "src-tauri/src/instrument/tcd1304/mod.rs",
+        "src-tauri/src/state.rs",
+        "src-tauri/src/commands/instrument.rs",
+        "src/workspaces/instrument/InstrumentWorkspace.tsx"
+      ],
+      "notes": "No VID/PID filtering: serialport is built default-features=false and libudev-dev is not installed, so available_ports() cannot report VID/PID. The device also ships the stock Renesas 045B:5310 pair with a constant USB serial string, so VID/PID would not identify it anyway. Enumerate available_ports(), keep ttyACM*/ttyUSB*/cu.usbmodem*/COM*, probe each with the E2b handshake, keep the ones answering TCD1304. JASPER_PORT stays as a manual override and is the only way to reach the pty simulator. AppState.driver is already Arc<Mutex<Box<dyn SpectrumDriver + Send>>> so connect can swap its contents. ipc.connectDevice (ipc.ts:127) is dead code today — InstrumentWorkspace.tsx:193 only calls setActiveDevice locally.",
+      "acceptance": [
+        "device_list() returns exactly one TCD1304 with the simulator running",
+        "Connect/Disconnect in the UI opens and closes the port for real",
+        "A non-spectrometer serial device on the machine is not disturbed beyond one probe"
+      ]
+    },
+    {
+      "id": "E4",
+      "title": "Make acquisition params honest about what the device accepts",
+      "type": "fix",
+      "priority": "P1",
+      "status": "todo",
+      "issue": 6,
+      "branch": null,
+      "depends_on": [
+        "E2b"
+      ],
+      "summary": "The UI exposes controls the hardware has no command for, and the acquisition loop runs faster than a capture can complete.",
+      "files": [
+        "src/workspaces/acquire/ActionShelf.tsx",
+        "src/store/acqStore.ts",
+        "src-tauri/src/commands/instrument.rs"
+      ],
+      "notes": "Integration slider is 5-500 step 5 (ActionShelf.tsx:40); the device clamps to 8-10000 ms and reports the applied value in the ACK — clamp to the metadata range and echo the ACK back into the store. Averaging has no device support; keep it host-side via process::average_scans (process.rs:27), which already exists. light_on/light_power cross the IPC boundary but no driver reads them and this hardware has no lamp command — hide those controls behind the E1 flag, leave the AcqParams fields. Acquisition loop interval floor is max(integration,16) at commands/instrument.rs:112; a capture costs about 2x integration because the firmware discards one frame, so the floor must be 2*integ_ms or every iteration blocks and starves the driver mutex.",
+      "acceptance": [
+        "Setting integration to 3 ms yields an ACK of 8 and the slider snaps to 8",
+        "The acquisition loop does not starve other commands of the driver mutex",
+        "No lamp controls are visible"
+      ]
+    },
+    {
+      "id": "E5",
+      "title": "Host-side wavelength calibration keyed on the IDN serial",
+      "type": "feature",
+      "priority": "P2",
+      "status": "todo",
+      "issue": 7,
+      "branch": null,
+      "depends_on": [
+        "E2b"
+      ],
+      "summary": "The device stores no calibration and the firmware roadmap keeps it that way, so JASPER owns pixel-to-nm.",
+      "files": [
+        "src-tauri/src/storage/schema.sql",
+        "src-tauri/src/commands/instrument.rs",
+        "src/workspaces/instrument/InstrumentWorkspace.tsx"
+      ],
+      "notes": "Default xs[i] = i with x_unit 'px' until a calibration exists — 'px' is already a supported unit (types.ts:11). New instrument_cal table: serial, coefficients JSON, fitted_at, note. Key on the IDN serial number (the MCU unique ID) — the only unique identifier the device has; the USB serial string descriptor is a hardcoded constant on every board. This is forward-compatible with the firmware's reserved E command, which would only ever store an opaque blob. calibrate_xcal becomes a real least-squares fit of a low-order polynomial to known line positions; XCalResult (driver.rs:81) already carries coefficients, rms and peaks_found, and ipc.ts:170 already delivers them to the UI, where they are currently discarded. Ship manual coefficient entry first; automatic neon peak-finding is a follow-on.",
+      "acceptance": [
+        "Save coefficients, restart the app, reconnect the same serial — the x-axis returns in nm",
+        "A different instrument serial does not pick up another unit's calibration",
+        "With no calibration, the axis reads pixel index and says so"
+      ]
+    },
+    {
+      "id": "E6",
+      "title": "pty simulator for the TCD1304 protocol, and rewrite the integration test",
+      "type": "feature",
+      "priority": "P0",
+      "status": "todo",
+      "issue": 8,
+      "branch": null,
+      "depends_on": [
+        "E2a"
+      ],
+      "summary": "There is no simulator for this protocol in either repo, and the existing test passes silently when its simulator is missing.",
+      "files": [
+        "tools/tcd1304-sim.py (new)",
+        "src-tauri/tests/serial_sim.rs"
+      ],
+      "notes": "The hardware repo has only an in-process _FakeDevice (tcd1304.py:366) that Rust cannot reach. Write pty.openpty(), print the slave path on stdout as the first line, then port the _FakeDevice command dispatch and build_frame() (tcd1304.py:135) verbatim — about 40 lines. serial_sim.rs currently drives claude_hw_design/tools/protocol-sim/sim.py, which belongs to the old protocol, and skips silently if it is absent (serial_sim.rs:36). A missing simulator must FAIL the test, not pass it.",
+      "acceptance": [
+        "python3 tools/tcd1304-sim.py prints a pty path",
+        "cargo test passes against it end to end",
+        "Deleting the simulator makes the test fail rather than pass"
+      ]
+    },
+    {
+      "id": "E7a",
+      "title": "Instrument panel: report real device metadata instead of fake telemetry",
+      "type": "fix",
+      "priority": "P1",
+      "status": "todo",
+      "issue": 9,
+      "branch": null,
+      "depends_on": [
+        "E2b"
+      ],
+      "summary": "The four telemetry tiles render fabricated zeros as if they were readings — this hardware has no telemetry at all.",
+      "files": [
+        "src-tauri/src/instrument/driver.rs",
+        "src/workspaces/instrument/InstrumentWorkspace.tsx",
+        "src/lib/types.ts",
+        "src/lib/dto.ts"
+      ],
+      "notes": "TelemetryPanel is at InstrumentWorkspace.tsx:90; the serial telemetry() returns all zeros. Replace the tiles with what the device does report: firmware version, protocol version, serial, pixel count, integration range, last seq, dropped-frame count, last capture round-trip in ms. Add a DeviceMetadata type rather than widening TelemetryData — none of tempC/lampHours/driftSigma/headroom applies to this hardware. Rust types in driver.rs are mirrored by hand in src/lib/types.ts; change both.",
+      "acceptance": [
+        "The panel shows the simulator's IDN serial and firmware 0.1",
+        "No tile displays a number the device did not send"
+      ]
+    },
+    {
+      "id": "E7b",
+      "title": "Real diagnostics log",
+      "type": "fix",
+      "priority": "P2",
+      "status": "todo",
+      "issue": 10,
+      "branch": null,
+      "depends_on": [
+        "E2b"
+      ],
+      "summary": "ipc.getDiagnostics returns a hardcoded four-entry array, so the log is decoration.",
+      "files": [
+        "src/lib/ipc.ts",
+        "src-tauri/src/commands/instrument.rs",
+        "src/workspaces/instrument/InstrumentWorkspace.tsx"
+      ],
+      "notes": "Hardcoded array at ipc.ts:104, rendered by DiagnosticsLog at InstrumentWorkspace.tsx:140. Feed it real events: connect, handshake result, ERR frames, CRC resyncs, dropped frames, timeouts.",
+      "acceptance": [
+        "Unplugging the device mid-capture puts a real entry in the log",
+        "A CRC resync is visible in the log"
+      ]
+    },
+    {
+      "id": "E7c",
+      "title": "Surface calibration warnings and wire up the Acquire dark/reference chips",
+      "type": "fix",
+      "priority": "P2",
+      "status": "todo",
+      "issue": 11,
+      "branch": null,
+      "depends_on": [
+        "E2b"
+      ],
+      "summary": "Calibration quality warnings are swallowed, and the Acquire dark/reference chips are cosmetic toggles that call no IPC.",
+      "files": [
+        "src/workspaces/instrument/InstrumentWorkspace.tsx",
+        "src/workspaces/acquire/ModeStrip.tsx"
+      ],
+      "notes": "CalibrationPanel drops the warn string into console.warn at InstrumentWorkspace.tsx:25 — toast it instead; the backend already computes useful warnings ('is the light off?', 'near saturation', 'signal low') at commands/instrument.rs:193-239. ModeStrip.tsx:45 toggles refState directly without calling any calibration IPC: either wire the chips to ipc.calibrateDark / ipc.calibrateReference, or make them read-only indicators.",
+      "acceptance": [
+        "Calibrating with the light on raises a visible toast, not a console line",
+        "The dark/reference chips reflect real calibration state"
+      ]
+    }
+  ],
+  "deferred": [
+    "Automatic neon-line peak finding for x-calibration (E5 ships manual coefficients)",
+    "Analyze, Chemometrics, and all Python sidecar work",
+    "DARK=16:28 is unconfirmed against hardware — the hardware repo flags it, and wrong indices silently bias every dark-corrected spectrum. Confirm with a capped sensor first.",
+    "Dark/reference frames are in-memory only (state.rs:19) and lost on restart; CalFrame.integration_ms is recorded but never checked at apply time (process.rs:65)",
+    "Firmware roadmap will move the wire without a version bump: new M keys (SAMPLE_FMT, FRONTEND, INTENSITY_MIN/MAX, ADC_BITS), U<us> integration, F<n> flush, capture countdown 2 to 1. Do not hardcode 'negative means saturated' or a seq delta of exactly 2."
+  ]
+}

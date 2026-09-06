@@ -7,20 +7,35 @@ import { generateSpectrum } from '../lib/mockDriver';
 function xConv(nm: number, unit: AcqParams['xUnit']): number {
   if (unit === 'um') return nm / 1000;
   if (unit === 'wn') return 1e7 / nm;
-  if (unit === 'px') return Math.round((nm - 400) / 1600 * 319);
   return nm;
 }
 function xAxisLabel(unit: AcqParams['xUnit']): string {
   return { nm: 'Wavelength · nm', um: 'Wavelength · µm', wn: 'Wavenumber · cm⁻¹', px: 'Detector pixel' }[unit];
 }
-function xTickFmt(nm: number, unit: AcqParams['xUnit']): string {
+function xTickFmt(
+  nm: number, unit: AcqParams['xUnit'],
+  xMin: number, xMax: number, nPoints: number,
+): string {
+  if (unit === 'px') return String(Math.round((nm - xMin) / (xMax - xMin) * (nPoints - 1)));
   const v = xConv(nm, unit);
-  if (unit === 'px') return String(v);
   if (unit === 'um') return v.toFixed(2);
   if (unit === 'wn') return v.toFixed(0);
   return String(Math.round(v));
 }
-function yLabel(mode: AcqParams['mode'], yUnit: AcqParams['yUnit']): string {
+
+/** Largest of 1/2/5 × 10ⁿ not exceeding ~raw — for stable, readable axis steps. */
+function niceStep(raw: number): number {
+  const mag = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-12))));
+  const r = raw / mag;
+  return (r >= 5 ? 5 : r >= 2 ? 2 : 1) * mag;
+}
+function yLabel(mode: AcqParams['mode'], yUnit: AcqParams['yUnit'], units?: string): string {
+  // Backend-pipeline frames say what their ys actually are — label honestly,
+  // e.g. raw counts shown while absorbance mode awaits dark/reference cal.
+  if (units === 'counts')   return 'Counts · raw (no dark/ref cal)';
+  if (units === 'counts_d') return 'Counts · dark-subtracted';
+  if (units === 'abs')      return 'Absorbance';
+  if (units === 'ratio')    return mode === 'reflectance' ? 'Reflectance · 0–1' : 'Transmittance · 0–1';
   const byUnit: Partial<Record<AcqParams['yUnit'], string>> = {
     au: 'Intensity · a.u.', abs: 'Absorbance', pct: 'Reflectance · 0–100 %',
     counts: 'Counts', cps: 'Counts / sec', logr: 'log(1/R)',
@@ -67,6 +82,7 @@ export function LiveSpectrum({
   const onCursorRef = useRef(onCursor); onCursorRef.current = onCursor;
   const cursorXRef  = useRef<number | null>(null);
   const localTRef   = useRef(0);
+  const lastRealRef = useRef<Spectrum | null>(null); // last streamed frame, for pause
 
   // ── Resize observer ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -85,7 +101,6 @@ export function LiveSpectrum({
   // ── Drawing loop — mounted once per size, reads everything from refs ───────
   useEffect(() => {
     let raf: number;
-    const xMin = 400, xMax = 2000;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
@@ -126,18 +141,57 @@ export function LiveSpectrum({
       const live0    = liveRef.current;
       const paused   = pausedRef.current;
       const cursorX  = cursorXRef.current;
-      const [yMin, yMax] = yRange(params.mode);
-
-      const xPx = (x: number) => xPad + (x - xMin) / (xMax - xMin) * (W - xPad - 14);
-      const yPx = (y: number) => yPadTop + (1 - (y - yMin) / (yMax - yMin)) * (H - yPadTop - yPadBot);
 
       // Use the streamed frame only if it matches the current mode; a frame left
       // over from the previous mode (during a switch) is discarded in favour of
       // the param-coherent local generator — no flicker between two shapes.
       const freshFrame = live0 && live0.params.mode === params.mode ? live0 : null;
-      const usingMock = !freshFrame;
-      const live = (!paused && freshFrame) ? freshFrame : generateSpectrum(params, localTRef.current);
+      if (freshFrame) lastRealRef.current = freshFrame;
+      // Pause freezes the last streamed frame instead of swapping to the mock
+      const heldFrame =
+        paused && lastRealRef.current?.params.mode === params.mode ? lastRealRef.current : null;
+      const streamed = paused ? heldFrame : freshFrame;
+      const live = streamed ?? generateSpectrum(params, localTRef.current);
+      const usingLocalGen = !streamed;
       if (!paused) localTRef.current += 0.016;
+
+      // Axes derive from the data on screen — no hard-coded instrument
+      // geometry (real device: 1024 px / 200–1000 nm; mock: 320 px / 400–2000).
+      let xMin = live.xs[0], xMax = live.xs[live.xs.length - 1];
+      for (const cap of captures) {
+        if (cap.xs.length) {
+          xMin = Math.min(xMin, cap.xs[0]);
+          xMax = Math.max(xMax, cap.xs[cap.xs.length - 1]);
+        }
+      }
+      if (!(xMax > xMin)) { xMin = 400; xMax = 2000; }
+
+      // Mock-styled data (local generator or mock driver, empty units) is
+      // authored for the fixed per-mode ranges; backend-pipeline frames carry
+      // units (counts/abs/ratio) — autoscale to the data, snapped to a nice
+      // step so frame-to-frame noise doesn't make the axis jitter.
+      let [yMin, yMax] = yRange(params.mode);
+      if (live.units) {
+        let lo = Infinity, hi = -Infinity;
+        const scanYs = (ys: ArrayLike<number>) => {
+          for (let i = 0; i < ys.length; i++) {
+            const v = ys[i];
+            if (v < lo) lo = v;
+            if (v > hi) hi = v;
+          }
+        };
+        scanYs(live.ys);
+        captures.forEach(c => scanYs(c.ys));
+        if (isFinite(lo) && isFinite(hi)) {
+          const pad  = (hi - lo) * 0.08 || Math.max(1, Math.abs(hi) * 0.05);
+          const step = niceStep(((hi - lo) + 2 * pad) / 5);
+          yMin = Math.floor((lo - pad) / step) * step;
+          yMax = Math.ceil((hi + pad) / step) * step;
+        }
+      }
+
+      const xPx = (x: number) => xPad + (x - xMin) / (xMax - xMin) * (W - xPad - 14);
+      const yPx = (y: number) => yPadTop + (1 - (y - yMin) / (yMax - yMin)) * (H - yPadTop - yPadBot);
 
       ctx.clearRect(0, 0, W, H);
 
@@ -145,24 +199,28 @@ export function LiveSpectrum({
       ctx.lineWidth = 1;
       ctx.font = '11px "Geist Mono", ui-monospace, monospace';
       ctx.fillStyle = muted;
-      const xTicks = [400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000];
+      const xStep = niceStep((xMax - xMin) / 8);
+      const xTicks: number[] = [];
+      for (let x = Math.ceil(xMin / xStep) * xStep; x <= xMax + 1e-9; x += xStep) xTicks.push(x);
       xTicks.forEach((x, i) => {
         const px = xPx(x);
         ctx.beginPath(); ctx.moveTo(px, yPadTop); ctx.lineTo(px, H - yPadBot);
         ctx.strokeStyle = i % 2 === 0 ? gridStrong : grid; ctx.stroke();
-        ctx.textAlign = 'center'; ctx.fillText(xTickFmt(x, params.xUnit), px, H - 10);
+        ctx.textAlign = 'center';
+        ctx.fillText(xTickFmt(x, params.xUnit, xMin, xMax, live.xs.length), px, H - 10);
       });
+      const yFmt = (v: number) => (yMax - yMin) >= 20 ? String(Math.round(v)) : v.toFixed(2);
       for (let i = 0; i <= 5; i++) {
         const yy = yMin + (yMax - yMin) * i / 5;
         const py = yPx(yy);
         ctx.beginPath(); ctx.moveTo(xPad, py); ctx.lineTo(W - 14, py);
         ctx.strokeStyle = (i === 0 || i === 5) ? gridStrong : grid; ctx.stroke();
-        ctx.textAlign = 'right'; ctx.fillText(yy.toFixed(2), xPad - 6, py + 3);
+        ctx.textAlign = 'right'; ctx.fillText(yFmt(yy), xPad - 6, py + 3);
       }
 
       // Axis labels
       ctx.fillStyle = muted; ctx.textAlign = 'left';
-      ctx.fillText(yLabel(params.mode, params.yUnit), xPad, 14);
+      ctx.fillText(yLabel(params.mode, params.yUnit, live.units), xPad, 14);
       ctx.textAlign = 'right';
       ctx.fillText(xAxisLabel(params.xUnit), W - 14, 14);
 
@@ -190,8 +248,8 @@ export function LiveSpectrum({
       });
       ctx.globalAlpha = 1;
 
-      // Averaging ghosts (mock only — real averaging is done upstream)
-      if (usingMock && params.averaging > 1) {
+      // Averaging ghosts (local generator only — real averaging is upstream)
+      if (usingLocalGen && params.averaging > 1) {
         for (let k = 0; k < Math.min(params.averaging - 1, 3); k++) {
           const ghost = generateSpectrum(params, localTRef.current, k + 1);
           ctx.strokeStyle = accentLive; ctx.globalAlpha = 0.1; ctx.lineWidth = 1;

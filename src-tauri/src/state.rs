@@ -1,16 +1,22 @@
 use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
 use std::sync::Arc;
 use crate::instrument::mock::MockDriver;
+use crate::instrument::serial::SerialDriver;
 use crate::instrument::driver::SpectrumDriver;
 use crate::commands::sidecar::SidecarHolder;
 
 pub struct AppState {
-    pub driver:          Mutex<Box<dyn SpectrumDriver + Send>>,
+    /// Arc so the streaming acquisition thread can hold the driver and call
+    /// scan() through the trait (mock and real device alike).
+    pub driver:          Arc<Mutex<Box<dyn SpectrumDriver + Send>>>,
     pub db_path:         String,
     /// Monotonic acquisition generation. Each start bumps it; a streaming thread
     /// runs only while its captured generation still matches — so a restart
     /// (e.g. on mode change) cleanly retires the previous thread.
     pub acq_generation:  Arc<AtomicU64>,
+    /// Dark/reference frames for the host-side measurement pipeline
+    /// (instrument::process). Arc: the streaming thread reads it per frame.
+    pub calibration:     Arc<Mutex<crate::instrument::process::Calibration>>,
     pub sidecar:         SidecarHolder,
 }
 
@@ -36,10 +42,24 @@ impl AppState {
 
         eprintln!("[AppState] sidecar script: {script_path}");
 
+        // JASPER_PORT=/dev/ttyACM0 (or a protocol-sim pty) selects the real
+        // PROTOCOL.md serial driver; unset → mock.
+        let driver: Box<dyn SpectrumDriver + Send> = match std::env::var("JASPER_PORT") {
+            Ok(port) if !port.trim().is_empty() => {
+                eprintln!("[AppState] instrument driver: serial on {port}");
+                Box::new(SerialDriver::new(port.trim().to_string()))
+            }
+            _ => {
+                eprintln!("[AppState] instrument driver: mock (set JASPER_PORT for serial)");
+                Box::new(MockDriver::new())
+            }
+        };
+
         Self {
-            driver:         Mutex::new(Box::new(MockDriver::new())),
+            driver:         Arc::new(Mutex::new(driver)),
             db_path,
             acq_generation: Arc::new(AtomicU64::new(0)),
+            calibration:    Arc::new(Mutex::new(Default::default())),
             sidecar:        SidecarHolder::new(script_path),
         }
     }
