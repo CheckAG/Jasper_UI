@@ -5,12 +5,16 @@ It is what the next agent inherits — `PLAN.md` says what is planned, this says
 
 ## Now
 
-Phase E has not started. The first thing to build is **E2a — the TCD1304 frame codec**
-(`src-tauri/src/instrument/tcd1304/frame.rs`), because E2b, E3, E4, E5 and E7 all sit on top of it.
-E6 (the pty simulator) only needs E2a, so those two can go in parallel and E6 is what makes E2b
+Phase E has not started. The first thing to build is **E2a — the TCD1304 frame codec** (#3,
+`src-tauri/src/instrument/tcd1304/frame.rs`), because E2b, E3, E4, E5 and E7 all sit on top of it.
+E6 (#8, the pty simulator) only needs E2a, so those two go in parallel and E6 is what makes E2b
 testable without hardware.
 
-Branch off `origin/master` with `/new-branch` once the issue numbers exist.
+Branch off `origin/master` with `/new-branch 3`.
+
+**Before starting E4, E5, E8 or E9, read `~/Desktop/Spectrum Analyzer python`** — a PyQt6 spectrum
+analyser for camera sensors with the same layering as ours. Four pieces of it are being ported, not
+reinvented; `PLAN.md` → Reference implementations says what to take and what to leave.
 
 ## State
 
@@ -26,7 +30,8 @@ Only `crc16_ccitt` (`serial.rs:25`) survives the rewrite — same CCITT-FALSE al
 `src-tauri/tests/serial_sim.rs` tests the old protocol against a simulator that is not in this repo,
 and passes silently when it is missing.
 
-**Untouched** — everything in Phase E. Nothing has been written yet.
+**Untouched** — everything in Phase E. Nothing has been written yet. Twelve features: #2–#11 exist
+on GitHub; E8 and E9 sit in `feature_list.json` with `issue: null` until they are filed.
 
 **Not real, despite appearances** — worth knowing before trusting the UI:
 `telemetry()` on serial returns all zeros and the Instrument panel renders them as readings
@@ -38,17 +43,11 @@ driver reads them.
 
 ## Uncommitted work
 
-On branch `protocol_simulation`, all new this session, none committed:
+Clean. Everything from the planning session was merged to `master` as PR #12
+(`c78eeeb` — plan, feature list, handoff, three skills, CLAUDE.md).
 
-| Path | What |
-|---|---|
-| `CLAUDE.md` | Project overview + tech stack (created this session, then amended with a Phase E pointer) |
-| `PLAN.md` | Rewritten as Phase E only — **gitignored**, so it will not commit |
-| `docs/PLAN-archive-phases-A-D.md` | The old 725-line plan, moved here with an archive header |
-| `feature_list.json` | The 10 Phase E features, with files, notes and acceptance criteria |
-| `SESSION-HANDOFF.md` | This file |
-| `tools/create-issues.sh` | Creates the 10 GitHub issues via `gh` |
-| `.claude/skills/{commit,new-branch,handoff}/SKILL.md` | Repo conventions as skills |
+Uncommitted after the reference-implementation review: `PLAN.md`, `feature_list.json` and this file,
+carrying the E4/E5 rescope and the new E8/E9.
 
 Also changed, not a file: `origin` was switched from HTTPS to `git@github.com:CheckAG/Jasper_UI.git`.
 
@@ -73,18 +72,31 @@ Also changed, not a file: `origin` was switched from HTTPS to `git@github.com:Ch
   plausible-looking positive value. Do not "fix" this to unsigned.
 - **`DARK=16:28` in the metadata is unconfirmed against hardware** — the hardware repo flags it.
   Wrong indices raise no error, they silently bias every dark-corrected spectrum.
-- The GitHub MCP token can read `CheckAG/Jasper_UI` but not write: `POST /issues` returns
-  `403 Resource not accessible by personal access token`. Hence `tools/create-issues.sh`.
+- **The PyQt6 reference at `~/Desktop/Spectrum Analyzer python` already solves four of our problems.**
+  Same layering, different sensor. `math/calibration.py` is a complete neon auto-calibration
+  (adaptive peak detect → RANSAC anchor bootstrap → greedy one-to-one line matching → Legendre fit
+  with R²/RMS) — the TCD1304 firmware repo lists this as *not done*, but it is done here, so E5 (#7)
+  became a port instead of "manual coefficients first". `pipeline/worker.py` has the frame-drop
+  backpressure gate our acquisition loop lacks (added to E4, #6). `pipeline/axis.py` generates the
+  axis on demand rather than baking it into frames (new E8). Its `.github/workflows/ci.yml` is the
+  CI shape we have none of (new E9).
+- **Use the Legendre basis over a normalised index, never a raw polynomial.** At 3694 pixels
+  `p⁵ ≈ 6.8e17`; the dead `serial.rs:132` did raw Horner on the pixel index.
+- The GitHub MCP token can read `CheckAG/Jasper_UI` but not write: `POST /issues` and
+  `PATCH /issues/<n>` both return `403 Resource not accessible by personal access token`. Hence
+  the one-shot scripts; the current one is `/tmp/claude-1000/-home-muttu-Desktop-Jasper-ui/740fb8ba-05bd-48f2-baac-19f44039e9da/scratchpad/update-issues.sh`.
 
 ## Blocked / needs a human
 
-- **Issues do not exist yet.** `gh` is not installed on this machine. Install it, `gh auth login`,
-  run `./tools/create-issues.sh`, then write the returned numbers into the `issue` fields in
-  `feature_list.json`. Until that happens `/new-branch` has no number to use.
+- **`gh` is not installed, and the GitHub MCP token is read-only.** #2–#11 were filed by hand.
+  The amendments to #6 and #7 and the two new issues (E8, E9) are still pending: install `gh`,
+  `gh auth login`, run `/tmp/claude-1000/-home-muttu-Desktop-Jasper-ui/740fb8ba-05bd-48f2-baac-19f44039e9da/scratchpad/update-issues.sh`,
+  then write the two returned numbers into `feature_list.json`. That script lives in the session
+  scratchpad, not the repo — `tools/` was deleted once its create-issues script had been used.
 - **No hardware has been connected in this session.** `/dev/ttyACM0` exists but nothing has been
   read from it. Every protocol claim here comes from the spec and the firmware source, not from a
   live board. E6's simulator is what unblocks development; a real board is still needed to confirm
   the `DARK` window and the inversion convention.
-- **Two Phase E calls were made without the user weighing in**, both recorded in `PLAN.md`:
-  x-calibration ships manual coefficient entry (neon auto-fit deferred), and `xs` defaults to pixel
-  index rather than faking nm.
+- **One Phase E call was made without the user weighing in**, recorded in `PLAN.md`: `xs` defaults
+  to pixel index rather than faking nm. (The other — manual x-cal coefficients — was overturned
+  after reading the PyQt6 reference; E5 now ports the auto-fit.)

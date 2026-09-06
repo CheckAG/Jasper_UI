@@ -116,7 +116,7 @@ Today the port comes from the `JASPER_PORT` env var at `state.rs:47` and there i
   Make the driver box swappable at runtime — `AppState.driver` is already
   `Arc<Mutex<Box<dyn SpectrumDriver + Send>>>` (`state.rs:8`), so connect can replace its contents.
 
-### E4 — Params: what the device actually accepts
+### E4 — Params the device accepts, and a backpressure gate
 
 `AcqParams` (`driver.rs:6`, mirrored at `src/lib/types.ts:14`) carries fields the hardware has no
 command for. Make the UI honest:
@@ -131,25 +131,47 @@ command for. Make the UI honest:
 - **Acquisition loop**: `commands/instrument.rs:112` sets the interval floor from `integration`.
   A capture costs ≈ 2 × integration, so the floor must be `2 × integ_ms`, not `max(integ, 16)`,
   or every iteration blocks and starves the driver mutex.
+- **Backpressure**: the loop emits `spectrum-frame` unconditionally (`commands/instrument.rs:143`).
+  Each frame is 3694 points; at short integration times the webview falls progressively behind
+  instead of tracking the newest data. Port the gate from the PyQt6 reference
+  (`pipeline/worker.py`): an `AtomicBool` set before emit, cleared by a `frame_consumed` command
+  the frontend invokes after rendering. Continuous drops frames while the gate is set;
+  **single-shot never drops** — every frame must reach the averaging accumulator.
 
 ### E5 — Wavelength calibration (host-owned)
 
 `xs` is currently built at port open from a `GET CAL` polynomial the new device does not have,
-falling back to pixel index. For Phase E:
+falling back to pixel index. The device stores no calibration and the firmware roadmap keeps it
+that way, so JASPER owns pixel→nm.
 
-- Default `xs[i] = i` (pixel index), `x_unit = 'px'`. Honest, and already a supported unit
-  (`types.ts:11`).
-- Store a calibration record per instrument, **keyed on the IDN serial number** — the only unique
-  ID the device has. New `instrument_cal` table in `src-tauri/src/storage/schema.sql`: serial,
-  coefficients JSON, fitted_at, note. This is forward-compatible with the firmware's reserved `E`
-  command, which would only ever store an opaque blob.
-- `calibrate_xcal` becomes a real fit: enter known line positions (neon lamp is the intended
-  source), least-squares a low-order polynomial, return coefficients + RMS + peak count.
-  `XCalResult` (`driver.rs:81`) already has all three fields, and `ipc.ts:170` already carries
-  `coefficients` to the UI — it is simply discarded today.
-- When a cal exists for the connected serial, evaluate it into `xs` and switch `x_unit` to `nm`.
+**Port `math/calibration.py` from the PyQt6 reference rather than hand-entering coefficients.**
+It is a complete, working auto-calibration — a transliteration, not research:
 
-Ship the manual-coefficient path first; automatic neon peak-finding is a follow-on.
+1. `detect_peaks()` — scipy `find_peaks`, height as a fraction of max, minimum pixel distance,
+   then sub-pixel refinement by 3-point quadratic fit.
+2. `_best_anchor_map()` — RANSAC over ordered pairs of (tallest peaks) × (reference lines).
+   Scored on **distinct** lines hit, which is what rejects degenerate near-flat maps.
+3. `_match_peaks_to_lines()` — greedy nearest-neighbour in ascending error order, each peak and
+   each line consumed at most once, so one blurred peak cannot claim two lines.
+4. `legfit` degree 2 or 3, then R² and RMS.
+5. Neon (43 lines, already extended past the C++ original against real hardware) and
+   mercury-argon (22 lines) tables, verbatim.
+
+**Legendre basis, not raw polynomial.** Map pixel to `[-1, 1]` as `2i/(n−1) − 1` before evaluating.
+The dead `serial.rs:132` used raw Horner on the pixel index; at 3694 pixels `p⁵ ≈ 6.8e17`, which is
+ill-conditioned exactly where this sensor lives.
+
+Storage: new `instrument_cal` table in `src-tauri/src/storage/schema.sql` — serial, coefficients
+JSON, fitted_at, note — **keyed on the IDN serial number**, the only unique ID the device has.
+Forward-compatible with the firmware's reserved `E` command, which would store an opaque blob.
+
+With no calibration loaded, fall back to the pixel axis **regardless of the configured axis
+setting** (`x_unit = 'px'`, already supported at `types.ts:11`). `XCalResult` (`driver.rs:81`)
+already carries `coefficients` / `rms` / `peaks_found`, and `ipc.ts:170` already delivers them to
+the UI, where they are discarded today.
+
+`_best_anchor_map` is O(candidates² × lines²) — ≈120k inner iterations. One-shot behind a Fit
+button with an abort path, as the reference wires it (`_FitThread`). Never run it per frame.
 
 ### E6 — Simulator
 
@@ -177,6 +199,27 @@ The panel currently renders fabricated numbers as if they were readings.
   no IPC. Either wire them to `ipc.calibrateDark` / `ipc.calibrateReference` or make them read-only
   indicators of `refState`.
 
+### E8 — Generate the x-axis from stored calibration, not inside the driver
+
+`xs` is built once in the driver at port open and shipped in every `SpectrumFrame` (`driver.rs:45`),
+so the wavelength axis is baked in by the layer furthest from the display and changing a calibration
+means reconnecting. The PyQt6 reference does the opposite: `AxisGenerator.generate(n_pixels)`
+returns `(x, label, x_min, x_max)` on demand from the stored calibration plus the sample count, and
+the driver only ever produces counts. Frames should carry `ys` and `n_pixels`; drop `xs` from the
+hot path. Keep the `XUnit` union (`types.ts:11`) — `LiveSpectrum.tsx:7-24` already converts nm→µm
+and nm→cm⁻¹, and its `px` branch (`:19`) currently fakes a fractional index that would become real.
+Do this after E5, when there is a calibration worth switching between.
+
+### E9 — CI
+
+There is none; nothing checks that a PR compiles. On push to `master`/`feature/**`/`fix/**` and on
+PRs to `master`: `npx tsc -b`, `npx eslint .`, `cargo test`, `cargo clippy -- -D warnings`.
+The Ubuntu runner needs the Tauri system deps first (`libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev
+librsvg2-dev libayatana-appindicator3-dev libsoup-3.0-dev`) and a cache on `~/.cargo` +
+`src-tauri/target`, or the Rust job costs minutes every run. `cargo test` includes the E6 simulator
+test, so the runner needs `python3` — and that test must **fail** when the simulator is missing,
+which is the whole point of running it in CI. Packaging can wait; compiling and testing cannot.
+
 ---
 
 ## Verification
@@ -186,17 +229,34 @@ The panel currently renders fabricated numbers as if they were readings.
 | E1 | Rail and ⌘K palette show only Acquire + Instrument; Export dialog still opens. |
 | E2 | `cargo test -p jasper` — CRC check value `0x29B1` for `"123456789"`; resync test feeds a frame prefixed with garbage containing a false `TC` and still parses it. |
 | E3 | With the sim running, `device_list()` returns exactly one `TCD1304`; connect/disconnect from the UI actually opens and closes the port. |
-| E4 | Set integration to 3 ms in the UI → ACK reports 8 → slider snaps to 8. |
-| E5 | Save coefficients, restart the app, reconnect the same serial → x-axis comes back in nm. |
+| E4 | Set integration to 3 ms in the UI → ACK reports 8 → slider snaps to 8. With a deliberately slow renderer, continuous drops frames and the trace stays current; a single-shot 8-frame average still receives all 8. |
+| E5 | Fit against a neon capture → RMS < 1 nm, R² and matched-line count reported. Save, restart, reconnect the same serial → x-axis comes back in nm. |
 | E6 | `python3 tools/tcd1304-sim.py` prints a pty path; `SPECBENCH_SIM=… cargo test` passes against it; deleting the sim makes the test fail. |
 | E7 | Instrument panel shows the sim's IDN serial and firmware `0.1`; unplugging mid-capture puts a real entry in the diagnostics log. |
+| E8 | Applying a calibration updates the axis without reconnecting; switching x unit does not round-trip to Rust. |
+| E9 | A PR that breaks the TS build or a Rust test fails CI, and the simulator test runs there. |
 | End-to-end | `./run.sh` with the real board on `/dev/ttyACM0`: live trace, a capture lands in the session, kill and reopen the app and the capture is still there. |
+
+---
+
+## Reference implementations
+
+- **`~/Desktop/TCD1304_Timer_ADC`** — our hardware. `PROTOCOL.md` is canonical and was verified
+  line-by-line against the firmware; `Python_User_Code/tcd1304.py` is the reference host to
+  transliterate. Ignore `main_gui.py` and `RA2A1_USB_Read.py` — DAC-era, they do not work.
+- **`~/Desktop/Spectrum Analyzer python`** — a PyQt6 spectrum analyser for camera-based sensors,
+  same layering as ours (`ICamera` ≈ `SpectrumDriver`, `AcquisitionWorker` ≈ our acquisition thread,
+  `SpectrumProcessor` ≈ `process.rs`, plus an `AxisGenerator` we lack).
+  **Take**: `math/calibration.py` (E5), the backpressure gate in `pipeline/worker.py` (E4), the
+  axis-on-demand model (E8), the CI shape (E9).
+  **Do not take**: the C++-fidelity DSP chain ordering, anything 2D-sensor (column summation, ROI
+  rows, exposure/gain scaling, median filter), the `saturation`/`roi` channels in `SpectrumData`,
+  or the Raman axis. Those exist to collapse an image into a spectrum; our device hands us 1D.
 
 ---
 
 ## Deferred
 
-- Automatic neon-line peak finding for x-calibration (E5 ships manual coefficients).
 - Analyze, Chemometrics, and everything in the Python sidecar.
 - `DARK=16:28` from metadata is **unconfirmed against hardware** — the hardware repo flags it, and
   wrong indices silently bias every dark-corrected spectrum. Confirm with a capped sensor before

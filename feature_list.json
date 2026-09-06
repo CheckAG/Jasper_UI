@@ -99,7 +99,7 @@
     },
     {
       "id": "E4",
-      "title": "Make acquisition params honest about what the device accepts",
+      "title": "Make acquisition params honest, and add a backpressure gate to the stream",
       "type": "fix",
       "priority": "P1",
       "status": "todo",
@@ -108,41 +108,46 @@
       "depends_on": [
         "E2b"
       ],
-      "summary": "The UI exposes controls the hardware has no command for, and the acquisition loop runs faster than a capture can complete.",
+      "summary": "The UI exposes controls the hardware has no command for, the acquisition loop runs faster than a capture can complete, and it emits frames into the webview with no consumer gate.",
       "files": [
         "src/workspaces/acquire/ActionShelf.tsx",
         "src/store/acqStore.ts",
-        "src-tauri/src/commands/instrument.rs"
+        "src-tauri/src/commands/instrument.rs",
+        "src/App.tsx (frame-consumed callback)"
       ],
-      "notes": "Integration slider is 5-500 step 5 (ActionShelf.tsx:40); the device clamps to 8-10000 ms and reports the applied value in the ACK — clamp to the metadata range and echo the ACK back into the store. Averaging has no device support; keep it host-side via process::average_scans (process.rs:27), which already exists. light_on/light_power cross the IPC boundary but no driver reads them and this hardware has no lamp command — hide those controls behind the E1 flag, leave the AcqParams fields. Acquisition loop interval floor is max(integration,16) at commands/instrument.rs:112; a capture costs about 2x integration because the firmware discards one frame, so the floor must be 2*integ_ms or every iteration blocks and starves the driver mutex.",
+      "notes": "Integration slider is 5-500 step 5 (ActionShelf.tsx:40); the device clamps to 8-10000 ms and reports the applied value in the ACK — clamp to the metadata range and echo the ACK back into the store. Averaging has no device support; keep it host-side via process::average_scans (process.rs:27), which already exists. light_on/light_power cross the IPC boundary but no driver reads them and this hardware has no lamp command — hide those controls behind the E1 flag, leave the AcqParams fields. Acquisition loop interval floor is max(integration,16) at commands/instrument.rs:112; a capture costs about 2x integration because the firmware discards one frame, so the floor must be 2*integ_ms or every iteration blocks and starves the driver mutex. BACKPRESSURE (added after reading the PyQt6 reference): the loop emits spectrum-frame unconditionally at commands/instrument.rs:143; each frame is 3694 points, so at short integration times the webview falls progressively behind instead of tracking newest. Port the gate from '~/Desktop/Spectrum Analyzer python' src/spectrum_analyzer/pipeline/worker.py: an AtomicBool set before emit and cleared by a frame_consumed command the frontend invokes after rendering. Continuous drops frames while the gate is set; single-shot NEVER drops, because every frame must reach the averaging accumulator. Test shape: tests/pipeline/test_worker_backpressure.py.",
       "acceptance": [
         "Setting integration to 3 ms yields an ACK of 8 and the slider snaps to 8",
         "The acquisition loop does not starve other commands of the driver mutex",
-        "No lamp controls are visible"
+        "No lamp controls are visible",
+        "With a deliberately slow renderer, continuous mode drops frames rather than queueing them, and the trace stays current",
+        "A single-shot 8-frame average receives all 8 frames"
       ]
     },
     {
       "id": "E5",
-      "title": "Host-side wavelength calibration keyed on the IDN serial",
+      "title": "Port the Legendre auto-calibration from the PyQt6 reference",
       "type": "feature",
-      "priority": "P2",
+      "priority": "P1",
       "status": "todo",
       "issue": 7,
       "branch": null,
       "depends_on": [
         "E2b"
       ],
-      "summary": "The device stores no calibration and the firmware roadmap keeps it that way, so JASPER owns pixel-to-nm.",
+      "summary": "The device stores no calibration and the firmware roadmap keeps it that way, so JASPER owns pixel-to-nm. A complete working implementation already exists in the PyQt6 reference — port it rather than shipping manual coefficient entry.",
       "files": [
         "src-tauri/src/storage/schema.sql",
         "src-tauri/src/commands/instrument.rs",
         "src/workspaces/instrument/InstrumentWorkspace.tsx"
       ],
-      "notes": "Default xs[i] = i with x_unit 'px' until a calibration exists — 'px' is already a supported unit (types.ts:11). New instrument_cal table: serial, coefficients JSON, fitted_at, note. Key on the IDN serial number (the MCU unique ID) — the only unique identifier the device has; the USB serial string descriptor is a hardcoded constant on every board. This is forward-compatible with the firmware's reserved E command, which would only ever store an opaque blob. calibrate_xcal becomes a real least-squares fit of a low-order polynomial to known line positions; XCalResult (driver.rs:81) already carries coefficients, rms and peaks_found, and ipc.ts:170 already delivers them to the UI, where they are currently discarded. Ship manual coefficient entry first; automatic neon peak-finding is a follow-on.",
+      "notes": "SCOPE CHANGED: originally 'manual coefficients first, neon auto-fit deferred'. Unnecessary — '~/Desktop/Spectrum Analyzer python' src/spectrum_analyzer/math/calibration.py is a complete working auto-calibration. Port end to end: detect_peaks() (scipy find_peaks, height as a fraction of max, min pixel distance, then sub-pixel 3-point quadratic refine from math/peaks.py); _best_anchor_map() (RANSAC over ordered pairs of tallest peaks x reference lines, scored on DISTINCT lines hit, which is what rejects degenerate near-flat maps); _match_peaks_to_lines() (greedy nearest-neighbour in ascending error order, each peak and each line consumed at most once); legfit degree 2 or 3; fit_quality() for R2 and RMS. Copy the neon (43 lines, already extended past the C++ original against real hardware) and mercury-argon (22 lines) tables verbatim. LEGENDRE BASIS, not raw polynomial: map pixel to [-1,1] as 2*i/(n-1)-1 before evaluating — the dead serial.rs:132 used raw Horner on the pixel index and at 3694 pixels p^5 is about 6.8e17, ill-conditioned exactly where this sensor lives. Storage: instrument_cal table keyed on the IDN serial (MCU unique ID; the USB serial string descriptor is a constant on every board), forward-compatible with the firmware reserved E command. With no calibration loaded, fall back to the pixel axis REGARDLESS of the configured axis setting — what AxisGenerator.generate() does. XCalResult (driver.rs:81) already carries coefficients/rms/peaks_found and ipc.ts:170 already delivers them to the UI, where they are discarded today. PERF: _best_anchor_map is O(candidates^2 x lines^2), about 120k inner iterations — one-shot behind a Fit button with an abort path, as the reference wires it via _FitThread in gui/dialogs/calibration.py. Never run it per frame.",
       "acceptance": [
-        "Save coefficients, restart the app, reconnect the same serial — the x-axis returns in nm",
-        "A different instrument serial does not pick up another unit's calibration",
-        "With no calibration, the axis reads pixel index and says so"
+        "Fitting against a neon capture returns coefficients with RMS under 1 nm and reports R2 and matched line count",
+        "Save, restart the app, reconnect the same serial — the x-axis returns in nm",
+        "A different instrument serial does not pick up another unit calibration",
+        "With no calibration, the axis reads pixel index and says so",
+        "The fit runs off the UI thread and can be aborted"
       ]
     },
     {
@@ -236,6 +241,52 @@
         "Calibrating with the light on raises a visible toast, not a console line",
         "The dark/reference chips reflect real calibration state"
       ]
+    },
+    {
+      "id": "E8",
+      "title": "Generate the x-axis from stored calibration, not inside the driver",
+      "type": "feature",
+      "priority": "P2",
+      "status": "todo",
+      "issue": null,
+      "branch": null,
+      "depends_on": [
+        "E5"
+      ],
+      "summary": "xs is built once inside the driver at port open and shipped in every SpectrumFrame, so the wavelength axis is baked in by the layer furthest from the display and changing a calibration requires reconnecting.",
+      "files": [
+        "src-tauri/src/instrument/driver.rs",
+        "src/lib/types.ts",
+        "src/lib/dto.ts",
+        "src/spectrum/LiveSpectrum.tsx",
+        "new axis module on the TS side"
+      ],
+      "notes": "The PyQt6 reference does the opposite: pipeline/axis.py AxisGenerator.generate(n_pixels) returns (x_values, label, x_min, x_max) computed on demand from the stored calibration plus the sample count, and the driver only ever produces counts. Frames should carry ys and n_pixels; drop xs from the hot path. Keep the existing XUnit union (types.ts:11) nm|um|wn|px — LiveSpectrum.tsx:7-24 already converts nm to um and cm-1, and its px branch (:19) currently fakes a fractional index over the plotted range, which would become a real pixel index. Do this after E5, when there is a real calibration to switch between.",
+      "acceptance": [
+        "Applying a calibration updates the axis without reconnecting",
+        "Switching x unit does not round-trip to Rust",
+        "px shows the true pixel index"
+      ]
+    },
+    {
+      "id": "E9",
+      "title": "CI: cargo test, tsc, eslint on push and PR",
+      "type": "feature",
+      "priority": "P2",
+      "status": "todo",
+      "issue": null,
+      "branch": null,
+      "depends_on": [],
+      "summary": "This repository has no CI. Nothing checks that a PR compiles.",
+      "files": [
+        ".github/workflows/ci.yml (new)"
+      ],
+      "notes": "Trigger on push to master/feature/**/fix/** and on PRs to master. Run npm ci then npx tsc -b (the build already runs tsc -b before vite build), npx eslint ., cargo test --manifest-path src-tauri/Cargo.toml, cargo clippy -- -D warnings. The Ubuntu runner needs the Tauri system deps first: libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev libsoup-3.0-dev. Cache ~/.cargo and src-tauri/target or the Rust job costs several minutes every run. cargo test includes the E6 simulator test, so the runner needs python3 — and that test must FAIL when the simulator is missing (see E6), which is exactly what CI is for. Packaging a release artifact can wait; compiling and testing cannot. See .github/workflows/ci.yml in '~/Desktop/Spectrum Analyzer python' for the shape.",
+      "acceptance": [
+        "A PR that breaks the TypeScript build fails CI",
+        "A PR that breaks a Rust test fails CI",
+        "The simulator integration test runs in CI, and fails if the simulator is absent"
+      ]
     }
   ],
   "deferred": [
@@ -244,5 +295,15 @@
     "DARK=16:28 is unconfirmed against hardware — the hardware repo flags it, and wrong indices silently bias every dark-corrected spectrum. Confirm with a capped sensor first.",
     "Dark/reference frames are in-memory only (state.rs:19) and lost on restart; CalFrame.integration_ms is recorded but never checked at apply time (process.rs:65)",
     "Firmware roadmap will move the wire without a version bump: new M keys (SAMPLE_FMT, FRONTEND, INTENSITY_MIN/MAX, ADC_BITS), U<us> integration, F<n> flush, capture countdown 2 to 1. Do not hardcode 'negative means saturated' or a seq delta of exactly 2."
+  ],
+  "reference_implementations": [
+    {
+      "path": "/home/muttu/Desktop/TCD1304_Timer_ADC",
+      "what": "Our hardware. PROTOCOL.md is canonical and verified against the firmware; Python_User_Code/tcd1304.py is the reference host to transliterate."
+    },
+    {
+      "path": "/home/muttu/Desktop/Spectrum Analyzer python",
+      "what": "PyQt6 spectrum analyzer for camera-based sensors. Same layering as ours (ICamera ~ SpectrumDriver, AcquisitionWorker ~ our acquisition thread, SpectrumProcessor ~ process.rs, plus an AxisGenerator we lack). Take: math/calibration.py (E5), the backpressure gate in pipeline/worker.py (E4), the axis-on-demand model (E8), the CI shape (E9). Do NOT take: the C++-fidelity DSP chain ordering, anything 2D-sensor (column summation, ROI rows, exposure/gain scaling, median filter), the saturation/roi channels in SpectrumData, or the Raman axis."
+    }
   ]
 }
