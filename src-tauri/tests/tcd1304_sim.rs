@@ -349,12 +349,20 @@ fn device_metadata_is_none_until_connected() {
 //
 //     JASPER_PORT=/dev/ttyACM0 cargo test --test tcd1304_sim -- --ignored --nocapture
 //
+// There is one board and cargo runs tests in parallel, so they take a lock
+// rather than fighting over the port — without it the loser fails with
+// "device busy" and looks like a protocol bug.
+//
 // The simulator can only ever prove we agree with our own reading of the spec.
 // This proves we agree with the firmware.
+
+/// Serialises the hardware tests: one board, one port, several tests.
+static HARDWARE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
 #[ignore = "requires a TCD1304 on JASPER_PORT"]
 fn real_hardware_handshake_and_capture() {
+    let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
     let port = std::env::var("JASPER_PORT")
         .expect("set JASPER_PORT=/dev/ttyACM0 (or wherever the board enumerated)");
     let mut drv = Tcd1304Driver::new(port);
@@ -416,6 +424,7 @@ fn real_hardware_handshake_and_capture() {
 #[test]
 #[ignore = "requires a TCD1304 attached to a real serial port"]
 fn real_hardware_is_found_by_probing() {
+    let _guard = HARDWARE.lock().unwrap_or_else(|e| e.into_inner());
     // No JASPER_PORT, no VID/PID: enumerate the machine's serial ports, open
     // each, and keep whatever answers the handshake as a TCD1304.
     let found = jasper_lib::instrument::tcd1304::discover(None);
