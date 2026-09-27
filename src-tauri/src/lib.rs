@@ -1,6 +1,6 @@
 mod state;
 pub mod instrument; // pub: integration tests drive the driver against the protocol simulator
-mod storage;
+pub mod storage;
 mod commands;
 
 use tauri::Manager;
