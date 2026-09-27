@@ -5,12 +5,17 @@ Updated 2026-09-27. Refresh with `/handoff` at the end of every working session.
 
 ## Now
 
-Three issues left in Phase E. Two need no hardware:
+**Verify the live-view fix on the board.** `80a7769` is committed but was never seen running —
+the app was still compiling when the session ended. `./run.sh` with no `JASPER_PORT` (that is
+the bug path: start with nothing connected), then Instrument → Connect → Acquire, and confirm
+a trace appears without touching the Live button.
+
+After that, Phase E has three issues left. Two need no hardware:
 
 - **#14 · E9** CI — `tsc -b`, eslint, `cargo test`, clippy. Nothing catches a broken build
   today; one sat on `master` unnoticed until it blocked frontend work on 2026-09-06.
 - **#13 · E8** generate the x-axis from stored calibration instead of baking it into frames
-  in the driver. Pairs with #7 — doing them together avoids touching the same code twice.
+  in the driver. `depends_on: E5`.
 - **#7 · E5** port the Legendre neon calibration. **Blocked on a neon or mercury-argon lamp.**
   The fit matches detected peaks against known emission lines; a broadband source gives it
   nothing to match. This is the one that gets the x-axis into nm instead of pixel index.
@@ -34,6 +39,9 @@ the board needs the simulator running**, not just `npm run tauri dev`.
 **Half-built:**
 - X-axis calibration has no backend at all. `calibrate_xcal` returns `Err`, the Instrument
   panel's X-cal row can never reach "done", and `xs` is the pixel index. That is #7.
+- `src/workspaces/instrument/InstrumentWorkspace.tsx:36` restarts the acquisition stream after
+  a dark/reference capture without checking `paused`, so calibrating from a frozen plot leaves
+  the device scanning. Same shape as the bug fixed in `80a7769`. One-line guard, not done.
 - `src/workspaces/chemometrics/ChemometricsWorkspace.tsx:258` still holds a hardcoded
   Maize/Wheat/Soil confusion matrix. It sits behind the disabled workspace flag; removing it
   means gutting that component's layout for a screen nobody can reach.
@@ -45,47 +53,46 @@ the board needs the simulator running**, not just `npm run tauri dev`.
 
 ## Uncommitted work
 
-`PLAN.md`, `feature_list.json` and this file — the status catch-up after PR #24. Everything
-else is on `origin/master` (`e34e862`). No local branches; merged ones are deleted.
+Clean. Three commits sit on branch `enhancement`, **unpushed**, three ahead of `origin/master`:
+
+- `80a7769` — the live-view fix, `src/App.tsx:71`. **Unverified on hardware.**
+- `0a0c19d` — startup always opens the default session, `src/store/sessionStore.ts:60`.
+- this handoff.
+
+`enhancement` does not follow the repo's `feature/xxx_shortname` convention; it was named by
+hand. Rename before opening a PR if that matters.
+
+Three stale local branches exist that the previous handoff claimed were gone: `UI-enhancement`
+(its remote is deleted), `UI_theming`, `protocol_simulation`.
 
 ## Learned this session
 
-- **There are two databases, and which one you get depends on how the app was launched.** From
-  a snap-confined terminal (VS Code) `XDG_DATA_HOME` points inside the snap, so the app opens
-  `~/snap/code/<rev>/.local/share/com.checkag.jasper/jasper.db` rather than `~/.local/share/...`.
-  Seeded sessions surviving a wipe is this, not a failed delete — it cost an hour of assuming
-  the frontend was broken. `AppState` now logs the path it opened at startup; read that first.
-- **The same bug shape appeared five times: a control or readout asserting something it never
-  checked.** The Dark/Reference chips called no calibration IPC (#11); `refState` defaulted to
-  `'ok'` so a fresh install showed three green calibration lights; the top bar showed
-  `session.device` beside a hardcoded `42.1 °C` and a permanently green LED; `params.averaging`
-  restarted the stream and changed no data; `Space` took captures by a second route that skipped
-  averaging entirely. **None were type errors or test failures**, so #14 would not have caught
-  any of them. UI state that mirrors hardware has to come from a backend query, never a local
-  default — that is now a convention in `CLAUDE.md`.
-- **Polarity was settled, then overturned, then settled again.** An unlit probe read ~2500
-  across the whole array and looked like "a dark frame near the floor, so bright must be high".
-  Masked pixels cannot respond to light, so a whole-array shift between two sessions was never
-  an illumination effect and said nothing about polarity. With a lamp attached the in-frame
-  comparison is decisive: masked window ~29300 at every integration time, illuminated down to
-  16100 at 200 ms. **Compare regions within one frame, never frames across sessions.**
-- **React invokes mount effects twice in development.** `init()` created two "Default session"
-  rows because `hydrated` was only set at the end and both calls saw an empty database. Guard
-  on entry, not on completion.
-- Do not measure device timing through a `pyserial` read loop — a `timeout=0.2` read makes
-  every capture look like it took 200 ms. The Rust test measures it properly: round-trip is
-  ~2x integration + ~40 ms.
-- Branch from the dependency, not from `master`, when `depends_on` in `feature_list.json` names
-  an unmerged issue. `cat >>` onto a missing file silently creates a stub instead of appending.
+- **A stream start keyed on a UI flag is the sixth instance of the same bug.** `App.tsx` started
+  acquisition from an effect depending on `paused` alone. `paused` is `false` at mount, so the
+  effect ran once at launch with no instrument, `startAcquisition` rejected into a swallowed
+  `.catch(() => {})`, and connecting a device afterwards changed no dependency — nothing ever
+  re-ran it. The button read `● Live` throughout, so the first click *paused* a stream that had
+  never started and the second one was what actually started it. The fix depends on the
+  backend-reported serial. **Depend on `deviceMeta?.serial`, never on `deviceMeta` itself** — the
+  poller in `acqStore.refreshInstrument` returns a fresh object every 2 s, and an effect keyed on
+  the object restarts the stream on a timer.
+- **A swallowed `.catch` turns a startup ordering bug into a silent one.** Nothing was logged at
+  any layer; the only symptom was an empty canvas under a control that claimed to be running.
+- **`cmd_start_acquisition` is idempotent** — `acq_generation.fetch_add` makes any previous thread
+  exit on its next iteration, so re-running the start effect is safe and needs no stop first.
+- The previous handoff said `PLAN.md`/`feature_list.json` were uncommitted; they had already
+  landed in `d563344`, which is on `origin/master`. Trust `git status`, not the last handoff.
 
 ## Blocked / needs a human
 
 - **A neon or mercury-argon lamp** for #7. Nothing else in the phase is blocked.
+- **Confirming `80a7769` needs someone at the machine** — it is a frontend fix behind a Connect
+  click in a Tauri WebKitGTK window, which no automation in this repo can drive.
 - **The GitHub token is read-only.** `POST /issues`, `PATCH /issues/<n>` and `POST /pulls` all
   return `403 Resource not accessible by personal access token`, and `gh` is not installed, so
-  every issue and PR this session was created by hand from a prepared body. Granting the token
-  `Issues: write` + `Pull requests: write`, or installing `gh`, removes a manual step each time.
-- **Two database backups** sit in the session scratchpad (`jasper-backup-*.db`,
-  `jasper-snap-backup-*.db`) holding the 3 seeded sessions and 52 mock-era captures that were
-  cleared on 2026-09-27. All were dated 2026-06-10, before the hardware existed. The scratchpad
-  is session-local — move them somewhere durable if any of it is wanted.
+  every issue and PR is created by hand from a prepared body. Granting the token `Issues: write`
+  + `Pull requests: write`, or installing `gh`, removes a manual step each time.
+- **Two database backups** from 2026-09-27 sat in that session's scratchpad
+  (`jasper-backup-*.db`, `jasper-snap-backup-*.db`) holding the 3 seeded sessions and 52
+  mock-era captures. Scratchpads are session-local, so they are **gone** unless they were moved
+  somewhere durable at the time.
