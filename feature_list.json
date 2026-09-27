@@ -10,7 +10,7 @@
       "title": "Hide Analyze and Chemometrics behind a feature flag",
       "type": "feature",
       "priority": "P1",
-      "status": "in-review",
+      "status": "done",
       "issue": 2,
       "branch": "feature/2_hide-analyze-chemometrics",
       "depends_on": [],
@@ -102,9 +102,9 @@
       "title": "Make acquisition params honest, and add a backpressure gate to the stream",
       "type": "fix",
       "priority": "P1",
-      "status": "todo",
+      "status": "in-review",
       "issue": 6,
-      "branch": null,
+      "branch": "feature/6_honest-params-backpressure",
       "depends_on": [
         "E2b"
       ],

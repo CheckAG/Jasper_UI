@@ -475,6 +475,7 @@ impl SpectrumDriver for Tcd1304Driver {
                 ys,
                 mode: params.mode.clone(),
                 units: "counts".to_string(),
+                integration_ms: applied,
                 timestamp: now_ms(),
             })
         })

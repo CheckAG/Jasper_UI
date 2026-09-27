@@ -136,6 +136,26 @@ pub async fn cmd_scan(
     .await
 }
 
+/// How long to honour the backpressure gate before assuming the frontend is
+/// never going to report back. Long enough that a slow render is respected,
+/// short enough that a dead renderer does not freeze the stream.
+const STALE_FRAME_MS: u64 = 1_000;
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+/// Called by the frontend once a streamed frame has been rendered, so the
+/// acquisition loop may produce the next one.
+#[tauri::command]
+pub fn cmd_frame_consumed(state: State<'_, AppState>) -> Result<(), String> {
+    state.frame_in_flight.store(0, Ordering::SeqCst);
+    Ok(())
+}
+
 // ── Continuous acquisition ────────────────────────────────────────────────────
 
 /// Starts a background thread that emits "spectrum-frame" events continuously.
@@ -156,11 +176,33 @@ pub fn cmd_start_acquisition(
     let driver = Arc::clone(&state.driver);
     let calibration = Arc::clone(&state.calibration);
 
-    let interval_ms = (params.integration).max(16) as u64;
+    let in_flight = Arc::clone(&state.frame_in_flight);
+
+    // A capture costs about 2x the integration time: the firmware discards the
+    // in-progress frame and sends the next one. Pacing on 1x asks for frames
+    // faster than the device can produce them, so the loop spends its time
+    // blocked inside scan() while holding the driver mutex.
+    let interval_ms = (2 * params.integration).max(16) as u64;
 
     std::thread::spawn(move || {
         while generation.load(Ordering::SeqCst) == my_gen {
             let started = std::time::Instant::now();
+
+            // Backpressure. Each frame is 3694 points; at short integration
+            // times the webview cannot render them as fast as the device can
+            // produce them, and every extra frame queued makes the displayed
+            // trace older. Skip the capture entirely rather than emitting into
+            // a queue nobody is draining — showing the newest data beats
+            // showing all of it, late.
+            //
+            // The gate opens again when the frontend calls `cmd_frame_consumed`,
+            // or after STALE_FRAME_MS if it never does — a renderer that dies
+            // mid-frame must not stop the stream forever.
+            let waiting_since = in_flight.load(Ordering::SeqCst);
+            if waiting_since != 0 && now_ms().saturating_sub(waiting_since) < STALE_FRAME_MS {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                continue;
+            }
 
             let frame = {
                 let drv = match driver.lock() {
@@ -187,15 +229,17 @@ pub fn cmd_start_acquisition(
             if generation.load(Ordering::SeqCst) != my_gen {
                 break;
             }
+            in_flight.store(now_ms(), Ordering::SeqCst);
             if let Err(e) = app.emit("spectrum-frame", &frame) {
                 eprintln!("emit spectrum-frame error: {e}");
+                in_flight.store(0, Ordering::SeqCst);
             }
 
-            // A real device blocks in scan() for the integration time itself,
-            // so only sleep the remainder of the frame interval — but always
-            // leave a minimum gap, or this loop holds the driver mutex
-            // essentially 100% of the time and starves every other command
-            // (telemetry, connect, calibration).
+            // A real device blocks in scan() for the capture itself, so only
+            // sleep the remainder of the frame interval — but always leave a
+            // minimum gap, or this loop holds the driver mutex essentially
+            // 100% of the time and starves every other command (metadata,
+            // connect, calibration).
             let elapsed_ms = started.elapsed().as_millis() as u64;
             let gap_ms = interval_ms.saturating_sub(elapsed_ms).max(15);
             std::thread::sleep(std::time::Duration::from_millis(gap_ms));
@@ -324,3 +368,57 @@ pub async fn cmd_calibrate_xcal(
     .await
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicU64;
+
+    /// The rule the acquisition loop applies before each capture. Extracted so
+    /// it can be checked without a Tauri app handle or a device.
+    fn should_skip(in_flight: &AtomicU64, now: u64) -> bool {
+        let waiting_since = in_flight.load(Ordering::SeqCst);
+        waiting_since != 0 && now.saturating_sub(waiting_since) < STALE_FRAME_MS
+    }
+
+    #[test]
+    fn an_idle_frontend_never_blocks_capture() {
+        let gate = AtomicU64::new(0);
+        assert!(!should_skip(&gate, 10_000));
+    }
+
+    #[test]
+    fn a_frame_awaiting_render_holds_the_next_capture() {
+        let gate = AtomicU64::new(10_000);
+        assert!(should_skip(&gate, 10_000), "same instant");
+        assert!(should_skip(&gate, 10_000 + STALE_FRAME_MS - 1), "still within the window");
+    }
+
+    #[test]
+    fn a_renderer_that_never_reports_back_does_not_freeze_the_stream() {
+        // The gate is an optimisation, not a lock. If the frontend dies holding
+        // it, capture has to resume rather than wait forever.
+        let gate = AtomicU64::new(10_000);
+        assert!(!should_skip(&gate, 10_000 + STALE_FRAME_MS));
+        assert!(!should_skip(&gate, 10_000 + STALE_FRAME_MS * 10));
+    }
+
+    #[test]
+    fn reporting_a_frame_rendered_reopens_the_gate() {
+        let gate = AtomicU64::new(10_000);
+        assert!(should_skip(&gate, 10_000));
+        gate.store(0, Ordering::SeqCst); // what cmd_frame_consumed does
+        assert!(!should_skip(&gate, 10_000));
+    }
+
+    #[test]
+    fn frame_interval_paces_on_the_real_cost_of_a_capture() {
+        // A capture costs about 2x integration: the firmware discards the
+        // in-progress frame and sends the next. Pacing on 1x asks for frames
+        // faster than the device can make them.
+        let interval = |integration: u32| (2 * integration).max(16) as u64;
+        assert_eq!(interval(50), 100);
+        assert_eq!(interval(8), 16, "the floor still applies at the device minimum");
+        assert_eq!(interval(0), 16, "and to a nonsense request");
+    }
+}

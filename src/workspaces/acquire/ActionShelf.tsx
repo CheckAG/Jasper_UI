@@ -1,5 +1,7 @@
-import { useRef }        from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAcqStore }   from '../../store/acqStore';
+import { ipc }           from '../../lib/ipc';
+import { LAMP_CONTROLS_ENABLED } from '../../lib/features';
 import { useSessionStore}from '../../store/sessionStore';
 import { Toggle }        from '../../components/design/Toggle';
 import { sampleCapture } from '../../lib/mockDriver';
@@ -8,6 +10,17 @@ export function ActionShelf() {
   const { params, setParam } = useAcqStore();
   const { captures, addCapture } = useSessionStore();
   const tagRef = useRef('');
+
+  // Integration bounds come from the device, not from a guess. The old 5-500 ms
+  // range let the slider ask for values this hardware rejects (its floor is the
+  // 7.4 ms it takes to clock 3694 pixels out), so the control moved and the
+  // device quietly did something else.
+  const [range, setRange] = useState({ min: 8, max: 10_000 });
+  useEffect(() => {
+    ipc.getDeviceMetadata()
+      .then(m => { if (m) setRange({ min: m.integMinMs, max: m.integMaxMs }); })
+      .catch(() => {});
+  }, []);
 
   function doCapture() {
     // Snapshot the frame currently on the canvas (real stream or param-matched mock)
@@ -37,7 +50,8 @@ export function ActionShelf() {
       <div style={fieldStyle}>
         <label className="mono" style={labelStyle}>Integration Time</label>
         <div style={rowStyle}>
-          <input type="range" min={5} max={500} step={5} value={params.integration}
+          <input type="range" min={range.min} max={range.max} step={1}
+            value={Math.min(Math.max(params.integration, range.min), range.max)}
             onChange={e => setParam('integration', Number(e.target.value))}
             style={{ flex: 1, minWidth: 0, accentColor: 'var(--signal)' }} />
           <span className="mono" style={{ fontSize: 14, minWidth: 52, textAlign: 'right', flexShrink: 0 }}>
@@ -60,20 +74,23 @@ export function ActionShelf() {
         </div>
       </div>
 
-      {/* Light source */}
-      <div style={{ ...fieldStyle, flex: '1 1 200px' }}>
-        <label className="mono" style={labelStyle}>Light Source</label>
-        <div style={rowStyle}>
-          <Toggle on={params.lightOn} onChange={v => setParam('lightOn', v)} label={params.lightOn ? 'ON' : 'OFF'} />
-          <input type="range" min={0} max={100} value={params.lightPower}
-            disabled={!params.lightOn}
-            onChange={e => setParam('lightPower', Number(e.target.value))}
-            style={{ flex: 1, minWidth: 0, accentColor: 'var(--signal)', opacity: params.lightOn ? 1 : 0.4 }} />
-          <span className="mono" style={{ fontSize: 13, minWidth: 40, textAlign: 'right', flexShrink: 0 }}>
-            {params.lightPower}<small style={{ color: 'var(--muted)', marginLeft: 2, fontSize: 11 }}>%</small>
-          </span>
+      {/* Light source — no driver reads lightOn/lightPower and this hardware
+          has no lamp command, so the controls are hidden rather than lying. */}
+      {LAMP_CONTROLS_ENABLED && (
+        <div style={{ ...fieldStyle, flex: '1 1 200px' }}>
+          <label className="mono" style={labelStyle}>Light Source</label>
+          <div style={rowStyle}>
+            <Toggle on={params.lightOn} onChange={v => setParam('lightOn', v)} label={params.lightOn ? 'ON' : 'OFF'} />
+            <input type="range" min={0} max={100} value={params.lightPower}
+              disabled={!params.lightOn}
+              onChange={e => setParam('lightPower', Number(e.target.value))}
+              style={{ flex: 1, minWidth: 0, accentColor: 'var(--signal)', opacity: params.lightOn ? 1 : 0.4 }} />
+            <span className="mono" style={{ fontSize: 13, minWidth: 40, textAlign: 'right', flexShrink: 0 }}>
+              {params.lightPower}<small style={{ color: 'var(--muted)', marginLeft: 2, fontSize: 11 }}>%</small>
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Sample tag */}
       <div style={fieldStyle}>

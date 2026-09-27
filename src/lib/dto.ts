@@ -51,6 +51,8 @@ export interface FrameDTO {
   mode:      string;
   /** "" mock-styled · "counts" raw · "counts_d" dark-subtracted · "ratio" · "abs" */
   units:     string;
+  /** Integration that actually produced the frame, after the device's clamp. */
+  integration_ms: number;
   timestamp: number;
 }
 

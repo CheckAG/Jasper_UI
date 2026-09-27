@@ -29,3 +29,13 @@ export const WORKSPACES = ALL_WORKSPACES.filter(w => isWorkspaceEnabled(w.id));
 
 /** Where to land when the stored workspace is one that is switched off. */
 export const DEFAULT_WORKSPACE: WorkspaceId = WORKSPACES[0]?.id ?? 'acquire';
+
+/**
+ * Whether the light-source controls are shown.
+ *
+ * `lightOn` and `lightPower` cross the IPC boundary in `AcqParams`, but no
+ * driver reads them and the TCD1304 has no lamp command at all — the controls
+ * moved a slider and changed nothing. Hidden rather than removed, so the fields
+ * stay in place for hardware that does have a controllable source.
+ */
+export const LAMP_CONTROLS_ENABLED = false;

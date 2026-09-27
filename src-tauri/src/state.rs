@@ -14,6 +14,11 @@ pub struct AppState {
     /// runs only while its captured generation still matches — so a restart
     /// (e.g. on mode change) cleanly retires the previous thread.
     pub acq_generation:  Arc<AtomicU64>,
+    /// Milliseconds-since-epoch when a frame was emitted and has not yet been
+    /// reported as rendered; 0 when the frontend is idle. The acquisition loop
+    /// skips a capture while this is set, so a slow renderer sees the newest
+    /// frame rather than a growing backlog. See `cmd_frame_consumed`.
+    pub frame_in_flight: Arc<AtomicU64>,
     /// Dark/reference frames for the host-side measurement pipeline
     /// (instrument::process). Arc: the streaming thread reads it per frame.
     pub calibration:     Arc<Mutex<crate::instrument::process::Calibration>>,
@@ -71,6 +76,7 @@ impl AppState {
             driver:         Arc::new(Mutex::new(driver)),
             db_path,
             acq_generation: Arc::new(AtomicU64::new(0)),
+            frame_in_flight: Arc::new(AtomicU64::new(0)),
             calibration:    Arc::new(Mutex::new(Default::default())),
             sidecar:        SidecarHolder::new(script_path),
         }
@@ -79,5 +85,9 @@ impl AppState {
     /// Retire any running acquisition thread by advancing the generation.
     pub fn stop_acquisition(&self) {
         self.acq_generation.fetch_add(1, Ordering::SeqCst);
+        // Clear the backpressure gate: whatever frame was awaiting a render
+        // belongs to a stream that no longer exists, and leaving the gate set
+        // would make the next stream wait out its stale timeout for nothing.
+        self.frame_in_flight.store(0, Ordering::SeqCst);
     }
 }

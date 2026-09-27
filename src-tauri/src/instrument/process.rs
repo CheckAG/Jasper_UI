@@ -101,6 +101,7 @@ mod tests {
             ys,
             mode: mode.into(),
             units: units.into(),
+            integration_ms: 25,
             timestamp: 0,
         }
     }
