@@ -52,13 +52,6 @@ export interface Capture {
 // --- Calibration ---
 export type CalStatus = 'ok' | 'pending' | 'fault';
 
-export interface RefState {
-  dark:      CalStatus;
-  reference: CalStatus;
-  xcal:      CalStatus;
-  live:      boolean;
-}
-
 export interface CalibrationState {
   dark:              Float32Array | null;
   reference:         Float32Array | null;

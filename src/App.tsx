@@ -13,13 +13,6 @@ import { ExportDialog }          from './components/overlays/ExportDialog';
 import { NewSessionDialog }      from './components/overlays/NewSessionDialog';
 import { Toaster }               from './components/overlays/Toaster';
 
-/** The frame currently on the canvas, or null when the instrument has not sent
- *  one. There is no synthetic fallback: a capture has to be something the
- *  hardware actually measured. */
-function captureCurrentFrame(): { xs: Float32Array; ys: Float32Array } | null {
-  return useAcqStore.getState().liveSpectrum;
-}
-
 export default function App() {
   const { params, paused, setParam, setPaused, setLiveSpectrum } = useAcqStore();
   const { addCapture, init: initSessions } = useSessionStore();
@@ -35,6 +28,12 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-density', density);
     initSessions();
+    // One poller for instrument state, shared by the top bar, the Instrument
+    // panel and the Acquire strip.
+    const { refreshInstrument } = useAcqStore.getState();
+    refreshInstrument();
+    const instrumentPoll = setInterval(refreshInstrument, 2000);
+
     const unlisten = ipc.onSpectrumFrame(frame => {
       // A frame already in flight when the stream was stopped must not land
       // after the freeze: what is captured has to be what is on screen.
@@ -54,6 +53,7 @@ export default function App() {
       if (applied > 0 && applied !== current.integration) set('integration', applied);
     });
     return () => {
+      clearInterval(instrumentPoll);
       unlisten();
       ipc.stopAcquisition().catch(() => {});
     };
@@ -79,8 +79,9 @@ export default function App() {
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (e.code === 'Space') {
         e.preventDefault();
-        const f = captureCurrentFrame();
-        if (f) addCapture(useAcqStore.getState().params, f.xs, f.ys, '');
+        // Same routine as the Capture button, rather than a second way to take
+        // a capture that skipped averaging and progress entirely.
+        useAcqStore.getState().runCapture();
       }
       if (e.key === 'p')       setPaused(!paused);
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true); }

@@ -8,7 +8,9 @@ import { Button }        from '../../components/design/Button';
 import type { DeviceInfo, DeviceMetadata, DiagEntry, CalStatus } from '../../lib/types';
 
 function CalibrationPanel({ connected }: { connected: boolean }) {
-  const { refState, params, setRefState } = useAcqStore();
+  const params = useAcqStore(s => s.params);
+  const calHeld = useAcqStore(s => s.calHeld);
+  const refreshCal = useAcqStore(s => s.refreshInstrument);
   const pushToast = useUIStore(s => s.pushToast);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [rms, setRms] = useState<Record<string, number>>({});
@@ -21,14 +23,13 @@ function CalibrationPanel({ connected }: { connected: boolean }) {
         : key === 'dark'
           ? await ipc.calibrateDark(params)
           : await ipc.calibrateReference(params);
-      setRefState({ [key]: result.status as CalStatus });
       if ('rms' in result && result.rms) setRms(r => ({ ...r, [key]: result.rms! }));
+      await refreshCal();
       // The backend flags a suspect calibration (light left on, near
       // saturation, signal too low). That belongs in front of the operator, not
       // in a console nobody has open.
       if ('warn' in result && result.warn) pushToast(`${key}: ${result.warn}`, 'info');
     } catch (e) {
-      setRefState({ [key]: 'fault' });
       pushToast(String(e), 'error');
     } finally {
       // Dark/reference capture pauses the acquisition stream — resume it
@@ -37,7 +38,13 @@ function CalibrationPanel({ connected }: { connected: boolean }) {
     }
   }
 
-  const allOk = refState.dark === 'ok' && refState.reference === 'ok' && refState.xcal === 'ok';
+  /** Status comes from the frames the backend holds, not a local flag. That
+   *  flag defaulted to 'ok', so a fresh install showed three green lights and
+   *  claimed calibrations nobody had taken. X-axis calibration has no backend
+   *  yet (E5), so it is never "done". */
+  const statusOf = (key: 'dark' | 'reference' | 'xcal'): CalStatus =>
+    key === 'xcal' ? 'pending' : (calHeld[key] ? 'ok' : 'pending');
+  const allOk = calHeld.dark && calHeld.reference;
 
   const rows = [
     { key: 'dark'      as const, label: 'Dark',        sub: 'Block light path, capture dark spectrum' },
@@ -73,9 +80,9 @@ function CalibrationPanel({ connected }: { connected: boolean }) {
         <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{
             width: 12, height: 12, borderRadius: '50%', flexShrink: 0,
-            background: refState[row.key] === 'ok' ? 'var(--accent-ok)' : 'var(--tint-2)',
-            border: `2px solid ${refState[row.key] === 'ok' ? 'var(--accent-ok)' : 'var(--line-2)'}`,
-            boxShadow: refState[row.key] === 'ok' ? '0 0 0 4px rgba(31,157,85,0.14)' : 'none',
+            background: statusOf(row.key) === 'ok' ? 'var(--accent-ok)' : 'var(--tint-2)',
+            border: `2px solid ${statusOf(row.key) === 'ok' ? 'var(--accent-ok)' : 'var(--line-2)'}`,
+            boxShadow: statusOf(row.key) === 'ok' ? '0 0 0 4px rgba(31,157,85,0.14)' : 'none',
           }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 500 }}>{row.label}</div>
@@ -85,11 +92,11 @@ function CalibrationPanel({ connected }: { connected: boolean }) {
             </div>
           </div>
           <Button size="sm"
-            variant={refState[row.key] === 'ok' ? 'ghost' : 'primary'}
+            variant={statusOf(row.key) === 'ok' ? 'ghost' : 'primary'}
             disabled={!connected || loading[row.key]}
             title={connected ? undefined : 'Connect an instrument first'}
             onClick={() => runCal(row.key)}>
-            {loading[row.key] ? 'Running…' : refState[row.key] === 'ok' ? 'Re-run' : 'Run'}
+            {loading[row.key] ? 'Running…' : statusOf(row.key) === 'ok' ? 'Re-run' : 'Run'}
           </Button>
         </div>
       ))}
@@ -278,7 +285,9 @@ function DiagnosticsLog({ entries }: { entries: DiagEntry[] }) {
 
 export function InstrumentWorkspace() {
   const [devices, setDevices]   = useState<DeviceInfo[]>([]);
-  const [meta, setMeta]         = useState<DeviceMetadata | null>(null);
+  // Device metadata comes from the shared store, polled once in App.tsx.
+  const meta = useAcqStore(s => s.deviceMeta);
+  const refreshInstrument = useAcqStore(s => s.refreshInstrument);
   const [diag, setDiag]         = useState<DiagEntry[]>([]);
   const [busy, setBusy]         = useState(false);
   const [error, setError]       = useState<string | null>(null);
@@ -290,7 +299,7 @@ export function InstrumentWorkspace() {
 
   const refresh = () => Promise.all([
     ipc.discoverDevices().then(setDevices).catch(() => setDevices([])),
-    ipc.getDeviceMetadata().then(setMeta).catch(() => setMeta(null)),
+    refreshInstrument(),
     ipc.getDiagnostics().then(setDiag).catch(() => setDiag([])),
   ]);
 
@@ -318,7 +327,7 @@ export function InstrumentWorkspace() {
     // with every capture. Discovery is not polled — it opens and handshakes
     // every serial port on the machine, which is not something to do on a timer.
     const id = setInterval(() => {
-      ipc.getDeviceMetadata().then(setMeta).catch(() => setMeta(null));
+      // Device metadata is polled centrally; only the log needs a tick here.
       ipc.getDiagnostics().then(setDiag).catch(() => {});
     }, 2000);
     return () => clearInterval(id);

@@ -1907,6 +1907,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-shell",
  "tauri-plugin-sql",
+ "tempfile",
 ]
 
 [[package]]

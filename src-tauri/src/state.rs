@@ -35,6 +35,11 @@ pub struct AppState {
 impl AppState {
     pub fn new(data_dir: &std::path::Path) -> Self {
         let db_path = data_dir.join("jasper.db").to_string_lossy().to_string();
+        // Worth logging: launched from a snap-confined terminal (VS Code),
+        // XDG_DATA_HOME points inside the snap, so the app uses a different
+        // database than it does from a plain shell. Sessions "disappearing"
+        // between launches is this, not data loss.
+        eprintln!("[AppState] database: {db_path}");
 
         if let Ok(conn) = crate::storage::db::open(&db_path) {
             drop(conn);

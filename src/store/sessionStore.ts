@@ -37,6 +37,16 @@ interface SessionStore {
   init: () => Promise<void>;   // called once on app start
 }
 
+/** Name of the session created when the database is empty. Deliberately plain:
+ *  it describes nothing about the sample, because nothing has been measured. */
+const DEFAULT_SESSION_NAME = 'Default session';
+
+/** init() creates a session when the database is empty, so it must not run
+ *  twice. React invokes mount effects twice in development, and `hydrated` is
+ *  only set at the end — both calls saw an empty database and each made a
+ *  session. Guarding on entry rather than on completion. */
+let initStarted = false;
+
 export const useSessionStore = create<SessionStore>()(
   immer((set, get) => ({
     sessions:    [],
@@ -49,14 +59,19 @@ export const useSessionStore = create<SessionStore>()(
     activeSession: () => get().sessions.find(s => s.id === get().activeId),
 
     init: async () => {
+      if (initStarted) return;
+      initStarted = true;
       try {
         const dbSessions = await ipc.loadSessions();
 
         if (dbSessions.length === 0) {
-          // First run — no sample sessions. A session names real work on a real
-          // instrument; seeding three invented ones put rows in the database
-          // that nobody measured.
-          set(s => { s.hydrated = true; });
+          // First run. No sample sessions — a session names real work on a real
+          // instrument, and seeding invented ones put rows in the database that
+          // nobody measured. But there has to be somewhere to put a capture, so
+          // one empty session is created and made active. It holds no data; it
+          // is just a place to start.
+          const session = get().addSession(DEFAULT_SESSION_NAME, '', '');
+          set(s => { s.activeId = session.id; s.hydrated = true; });
         } else {
           // Hydrate from DB — counts already come from the SQL subquery
           set(store => {
@@ -171,12 +186,20 @@ export const useSessionStore = create<SessionStore>()(
         s.sessions = s.sessions.filter(x => x.id !== id);
         delete s.stash[id];
         if (s.activeId === id) {
-          s.activeId  = remaining[0]?.id ?? '';
+          s.activeId  = remaining[0]?.id ?? null;
           s.captures  = remaining[0] ? (s.stash[remaining[0].id] ?? []) : [];
         }
       });
       try { await ipc.deleteSession(id); }
       catch (e) { console.warn('deleteSession:', e); toast('Failed to delete session from disk.', 'error'); }
+
+      // Deleting the last session would leave nowhere to put a capture, so a
+      // fresh default takes its place.
+      if (get().sessions.length === 0) {
+        const session = get().addSession(DEFAULT_SESSION_NAME, '', '');
+        set(s => { s.activeId = session.id; s.captures = []; });
+        return;
+      }
       // Load captures for the newly-active session if needed
       const next = get().activeId;
       if (next && get().captures.length === 0) {

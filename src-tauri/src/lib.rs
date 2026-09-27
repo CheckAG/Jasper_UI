@@ -1,6 +1,6 @@
 mod state;
 pub mod instrument; // pub: integration tests drive the driver against the protocol simulator
-mod storage;
+pub mod storage;
 mod commands;
 
 use tauri::Manager;
@@ -42,6 +42,7 @@ pub fn run() {
             cmd_get_device_metadata,
             cmd_get_diagnostics,
             cmd_scan,
+            cmd_capture,
             cmd_start_acquisition,
             cmd_stop_acquisition,
             cmd_frame_consumed,
