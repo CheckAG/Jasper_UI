@@ -1,11 +1,66 @@
+import { useCallback, useEffect, useState } from 'react';
 import { useAcqStore }     from '../../store/acqStore';
 import { useSessionStore } from '../../store/sessionStore';
-import { ModeChip }        from '../../components/design/ModeChip';
-import { StateChip }       from '../../components/design/StateChip';
+import { useUIStore }      from '../../store/uiStore';
+import { ipc }             from '../../lib/ipc';
+
+/** What the backend is actually holding. Asked for, not assumed — the frames
+ *  live in Rust and a local guess would claim a calibration that is not there. */
+type CalHeld = { dark: boolean; reference: boolean };
 
 export function ModeStrip() {
-  const { params, refState, paused, setParam, setRefState, setPaused } = useAcqStore();
+  const { params, paused, setParam, setPaused } = useAcqStore();
   const { captures, selectedIds, clearSelected, toggleSelected } = useSessionStore();
+  const pushToast = useUIStore(s => s.pushToast);
+
+  const [held, setHeld] = useState<CalHeld>({ dark: false, reference: false });
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const refresh = useCallback(
+    () => ipc.getCalibrationState().then(state => {
+      setHeld(state);
+      // With the Abs/Refl/Trans chips gone, what the pipeline computes follows
+      // from what has been measured rather than from a button:
+      //   neither        → raw counts
+      //   dark only      → dark-subtracted counts
+      //   dark + reference → absorbance
+      // `intensity` is the mode that means "subtract the dark if there is one",
+      // and `absorbance` needs both frames, so this is the honest progression.
+      const mode = state.dark && state.reference ? 'absorbance' : 'intensity';
+      if (useAcqStore.getState().params.mode !== mode) {
+        useAcqStore.getState().setParam('mode', mode);
+      }
+    }).catch(() => {}),
+    [],
+  );
+  useEffect(() => { refresh(); }, [refresh]);
+
+  /** Take a calibration, or discard the one already held.
+   *
+   *  The button is the state: with nothing stored it reads "Dark" and captures
+   *  one; with a frame stored it reads "Remove Dark" and flushes it. A dark
+   *  taken at the wrong integration, or a reference against the wrong standard,
+   *  is worse than none — so getting rid of one has to be one press. */
+  async function toggleCal(which: 'dark' | 'reference') {
+    setBusy(which);
+    try {
+      if (held[which]) {
+        await ipc.clearCalibration(which);
+      } else {
+        const r = which === 'dark'
+          ? await ipc.calibrateDark(params)
+          : await ipc.calibrateReference(params);
+        if (r.warn) pushToast(`${which}: ${r.warn}`, 'info');
+      }
+      await refresh();
+    } catch (e) {
+      pushToast(String(e), 'error');
+    } finally {
+      setBusy(null);
+      // Capturing a calibration pauses the stream; bring it back either way.
+      ipc.startAcquisition(params).catch(() => {});
+    }
+  }
 
   const allSelected = captures.length > 0 && selectedIds.length === captures.length;
 
@@ -24,29 +79,38 @@ export function ModeStrip() {
     fontFamily: 'var(--font-sans)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
   });
 
+  /** Unset reads as a warning, not as a neutral option: without a dark and a
+   *  reference the trace is raw counts, and that is worth seeing at a glance. */
+  const calBtn = (isHeld: boolean): React.CSSProperties => ({
+    ...chipBtn(false),
+    border: `1px solid ${isHeld ? 'var(--signal)' : 'var(--accent-alarm, #c0392b)'}`,
+    background: isHeld ? 'var(--signal-soft)' : 'transparent',
+    color: isHeld ? 'var(--signal)' : 'var(--accent-alarm, #c0392b)',
+  });
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      {(['absorbance', 'reflectance', 'transmittance'] as const).map(m => (
-        <ModeChip key={m}
-          label={{ absorbance: 'Abs', reflectance: 'Refl', transmittance: 'Trans' }[m]}
-          kbd={m[0].toUpperCase()}
-          active={params.mode === m}
-          onClick={() => setParam('mode', m)}
-        />
-      ))}
+      {(['dark', 'reference'] as const).map(k => {
+        const isHeld = held[k];
+        const name = k === 'dark' ? 'Dark' : 'Reference';
+        return (
+          <button key={k} onClick={() => toggleCal(k)} disabled={busy !== null}
+            style={calBtn(isHeld)}
+            title={isHeld
+              ? `Discard the stored ${name.toLowerCase()} and take a new one`
+              : `Capture a ${name.toLowerCase()} measurement`}>
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: isHeld ? 'var(--signal)' : 'var(--accent-alarm, #c0392b)',
+            }} />
+            {busy === k ? 'Working…' : isHeld ? `Remove ${name}` : name}
+          </button>
+        );
+      })}
 
       <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', margin: '0 4px' }} />
 
-      {(['dark', 'reference'] as const).map(k => (
-        <StateChip key={k}
-          status={refState[k]}
-          label={k.charAt(0).toUpperCase() + k.slice(1)}
-          active={refState.live && k === 'reference'}
-          onClick={() => setRefState({ [k]: refState[k] === 'ok' ? 'pending' : 'ok' })}
-        />
-      ))}
-
-      {/* Stack toggle (PCE_10) — color-coded vertical offset of selected spectra */}
+      {/* Stack toggle — color-coded vertical offset of selected spectra */}
       <button onClick={() => setParam('stack', !params.stack)} style={chipBtn(params.stack)}
         title="Stack selected spectra with vertical offset">
         ▤ Stack
@@ -62,13 +126,13 @@ export function ModeStrip() {
 
       <button onClick={() => setPaused(!paused)} style={{
         marginLeft: 'auto', padding: '6px 12px', border: '1px solid var(--line)',
-        borderRadius: 8, background: paused ? 'var(--signal-soft)' : 'var(--paper)',
-        color: paused ? 'var(--signal)' : 'var(--ink-2)',
+        borderRadius: 8, background: paused ? 'var(--paper)' : 'var(--signal-soft)',
+        color: paused ? 'var(--ink-2)' : 'var(--signal)',
         cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 13,
         display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        {paused ? '▶ Resume' : '⏸ Pause'}
-        <span className="mono" style={{ fontSize: 10, color: paused ? 'var(--signal)' : 'var(--muted)' }}>P</span>
+      }} title={paused ? 'Resume the live stream' : 'Freeze the live stream'}>
+        {paused ? '⏸ Paused' : '● Live'}
+        <span className="mono" style={{ fontSize: 10, color: paused ? 'var(--muted)' : 'var(--signal)' }}>P</span>
       </button>
     </div>
   );

@@ -163,6 +163,18 @@ export const ipc = {
     : new Promise(resolve => setTimeout(() =>
         resolve({ status: 'ok', rms: 0.018, coefficients: [400, 1.6], peaksFound: 12 }), 1400)),
 
+  /** Which calibrations the backend actually holds. The UI asks rather than
+   *  tracking its own copy — a dark frame lives in Rust, and a stale local
+   *  guess would claim a calibration that is not there. */
+  getCalibrationState: (): Promise<{ dark: boolean; reference: boolean }> => IS_TAURI
+    ? tauriInvoke<{ dark: boolean; reference: boolean }>('cmd_get_calibration_state')
+    : Promise.resolve({ dark: false, reference: false }),
+
+  /** Discard a stored calibration frame: 'dark', 'reference' or 'all'. */
+  clearCalibration: (which: 'dark' | 'reference' | 'all'): Promise<void> => IS_TAURI
+    ? tauriInvoke('cmd_clear_calibration', { which })
+    : Promise.resolve(),
+
   /** Instrument events, newest last. Empty until something has happened. */
   getDiagnostics: (): Promise<DiagEntry[]> => IS_TAURI
     ? tauriInvoke<DiagEntryDTO[]>('cmd_get_diagnostics').then(es => es.map(e => ({

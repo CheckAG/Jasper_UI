@@ -72,6 +72,50 @@ pub async fn cmd_connect_device(
     .await
 }
 
+/// Which calibrations are currently held, so the UI can show whether a dark or
+/// a reference has actually been taken rather than tracking its own guess.
+#[derive(serde::Serialize)]
+pub struct CalibrationState {
+    pub dark:      bool,
+    pub reference: bool,
+}
+
+#[tauri::command]
+pub async fn cmd_get_calibration_state(
+    state: State<'_, AppState>,
+) -> Result<CalibrationState, String> {
+    let calibration = Arc::clone(&state.calibration);
+    run_blocking(move || {
+        let cal = calibration.lock().map_err(|e| e.to_string())?;
+        Ok(CalibrationState { dark: cal.dark.is_some(), reference: cal.reference.is_some() })
+    })
+    .await
+}
+
+/// Discard a stored calibration frame. `which` is "dark", "reference" or "all".
+///
+/// Measurements are only as good as the calibration behind them, so removing one
+/// has to be possible without restarting: a dark taken at the wrong integration
+/// time, or a reference taken against the wrong standard, is worse than none.
+#[tauri::command]
+pub async fn cmd_clear_calibration(
+    state: State<'_, AppState>,
+    which: String,
+) -> Result<(), String> {
+    let calibration = Arc::clone(&state.calibration);
+    run_blocking(move || {
+        let mut cal = calibration.lock().map_err(|e| e.to_string())?;
+        match which.as_str() {
+            "dark"      => cal.dark = None,
+            "reference" => cal.reference = None,
+            "all"       => { cal.dark = None; cal.reference = None; }
+            other       => return Err(format!("unknown calibration {other:?}")),
+        }
+        Ok(())
+    })
+    .await
+}
+
 /// Recent instrument events. Empty until something has happened.
 #[tauri::command]
 pub async fn cmd_get_diagnostics(
@@ -125,7 +169,8 @@ pub async fn cmd_scan(
     run_blocking(move || {
         let frame = {
             let driver = driver.lock().map_err(|e| e.to_string())?;
-            driver.scan(&params)?
+            // average_scans with n = 1 is a single scan, so this covers both.
+            process::average_scans(driver.as_ref(), &params, params.averaging.max(1) as usize)?
         };
         let cal = calibration.lock().map_err(|e| e.to_string())?;
         Ok(process::process(frame, &cal))
@@ -179,7 +224,7 @@ pub fn cmd_start_acquisition(
     // in-progress frame and sends the next one. Pacing on 1x asks for frames
     // faster than the device can produce them, so the loop spends its time
     // blocked inside scan() while holding the driver mutex.
-    let interval_ms = (2 * params.integration).max(16) as u64;
+    let interval_ms = (2 * params.integration * params.averaging.max(1)).max(16) as u64;
 
     std::thread::spawn(move || {
         while generation.load(Ordering::SeqCst) == my_gen {
@@ -206,7 +251,11 @@ pub fn cmd_start_acquisition(
                     Ok(d) => d,
                     Err(_) => break,
                 };
-                match drv.scan(&params) {
+                // Averaging is host-side: the device has no AVG command, so N
+                // captures are taken and meaned here. Previously the stream
+                // ignored params.averaging entirely — the control restarted the
+                // stream and changed nothing about the data.
+                match process::average_scans(drv.as_ref(), &params, params.averaging.max(1) as usize) {
                     Ok(f) => f,
                     Err(e) => {
                         eprintln!("acquisition scan error, stopping stream: {e}");

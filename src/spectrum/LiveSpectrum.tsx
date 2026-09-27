@@ -140,15 +140,11 @@ export function LiveSpectrum({
       const paused   = pausedRef.current;
       const cursorX  = cursorXRef.current;
 
-      // Use the streamed frame only if it matches the current mode; a frame left
-      // over from the previous mode (during a switch) is discarded in favour of
-      // the param-coherent local generator — no flicker between two shapes.
-      const freshFrame = live0 && live0.params.mode === params.mode ? live0 : null;
-      if (freshFrame) lastRealRef.current = freshFrame;
-      // Pause freezes the last streamed frame
-      const heldFrame =
-        paused && lastRealRef.current?.params.mode === params.mode ? lastRealRef.current : null;
-      const live = paused ? heldFrame : freshFrame;
+      // Freezing has to actually freeze. This used to advance lastRealRef on
+      // every draw, paused or not, so the "held" frame kept being replaced by
+      // the newest one and pausing changed nothing on screen.
+      if (!paused && live0) lastRealRef.current = live0;
+      const live = paused ? lastRealRef.current : live0;
 
       // Nothing to draw until the instrument sends something. There is no
       // synthetic trace to fall back on any more — an empty canvas is the

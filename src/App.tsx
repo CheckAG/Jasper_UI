@@ -36,6 +36,9 @@ export default function App() {
     document.documentElement.setAttribute('data-density', density);
     initSessions();
     const unlisten = ipc.onSpectrumFrame(frame => {
+      // A frame already in flight when the stream was stopped must not land
+      // after the freeze: what is captured has to be what is on screen.
+      if (useAcqStore.getState().paused) return;
       setLiveSpectrum(frame);
       // Report the frame rendered on the next paint, which is when it actually
       // reaches the canvas. Until this lands the backend holds off capturing,
@@ -57,11 +60,17 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // (Re)start the acquisition stream whenever acquisition params change, so the
-  // streamed trace matches the selected mode / integration / averaging.
+  // Start and stop the stream with Live, and restart it whenever acquisition
+  // params change so the trace matches the settings. Pausing stops the device
+  // capturing rather than just hiding the result — the instrument has nothing
+  // to do while the plot is frozen.
   useEffect(() => {
-    ipc.startAcquisition(params).catch(() => {/* no instrument: the canvas stays empty */});
-  }, [params.mode, params.integration, params.averaging, params.lightOn, params.lightPower]);
+    if (paused) {
+      ipc.stopAcquisition().catch(() => {});
+    } else {
+      ipc.startAcquisition(params).catch(() => {/* no instrument: canvas stays empty */});
+    }
+  }, [paused, params.mode, params.integration, params.averaging]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -73,9 +82,6 @@ export default function App() {
         const f = captureCurrentFrame();
         if (f) addCapture(useAcqStore.getState().params, f.xs, f.ys, '');
       }
-      if (e.key === 'a')       setParam('mode', 'absorbance');
-      if (e.key === 'r')       setParam('mode', 'reflectance');
-      if (e.key === 't')       setParam('mode', 'transmittance');
       if (e.key === 'p')       setPaused(!paused);
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true); }
       if (e.key === 'Escape')  setCmdOpen(false);
