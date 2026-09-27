@@ -1,6 +1,10 @@
 import type { WorkspaceId } from './types';
 
-/** Every workspace the app can render, in rail order. */
+/** Every workspace the app can render, in rail order.
+ *
+ *  Instrument comes first, and is therefore where the app lands. Nothing can be
+ *  measured before an instrument is connected — and with no synthetic data left,
+ *  opening on Acquire meant an empty canvas and no hint of what to do about it. */
 export const ALL_WORKSPACES: { id: WorkspaceId; label: string }[] = [
   { id: 'instrument',   label: 'Instrument' },
   { id: 'acquire',      label: 'Acquire' },
@@ -28,6 +32,8 @@ export const isWorkspaceEnabled = (id: WorkspaceId): boolean =>
 export const WORKSPACES = ALL_WORKSPACES.filter(w => isWorkspaceEnabled(w.id));
 
 /** Where to land when the stored workspace is one that is switched off. */
+/** Where the app opens, and where it falls back when the selected workspace
+ *  is switched off. */
 export const DEFAULT_WORKSPACE: WorkspaceId = WORKSPACES[0]?.id ?? 'acquire';
 
 /**

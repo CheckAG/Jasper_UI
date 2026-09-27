@@ -4,7 +4,6 @@ import { useSessionStore } from './store/sessionStore';
 import { useUIStore }      from './store/uiStore';
 import { ipc }             from './lib/ipc';
 import { isWorkspaceEnabled, DEFAULT_WORKSPACE } from './lib/features';
-import { sampleCapture }   from './lib/mockDriver';
 import { AcquireWorkspace }      from './workspaces/acquire/AcquireWorkspace';
 import { InstrumentWorkspace }   from './workspaces/instrument/InstrumentWorkspace';
 import { AnalyzeWorkspace }      from './workspaces/analyze/AnalyzeWorkspace';
@@ -14,11 +13,11 @@ import { ExportDialog }          from './components/overlays/ExportDialog';
 import { NewSessionDialog }      from './components/overlays/NewSessionDialog';
 import { Toaster }               from './components/overlays/Toaster';
 
-/** Snapshot whatever the canvas is currently showing — the real live frame if
- *  streaming, else a fresh mock frame that matches the current params. */
-function captureCurrentFrame(): { xs: Float32Array; ys: Float32Array } {
-  const { liveSpectrum, params } = useAcqStore.getState();
-  return liveSpectrum ?? sampleCapture(params, performance.now() / 1000);
+/** The frame currently on the canvas, or null when the instrument has not sent
+ *  one. There is no synthetic fallback: a capture has to be something the
+ *  hardware actually measured. */
+function captureCurrentFrame(): { xs: Float32Array; ys: Float32Array } | null {
+  return useAcqStore.getState().liveSpectrum;
 }
 
 export default function App() {
@@ -37,6 +36,9 @@ export default function App() {
     document.documentElement.setAttribute('data-density', density);
     initSessions();
     const unlisten = ipc.onSpectrumFrame(frame => {
+      // A frame already in flight when the stream was stopped must not land
+      // after the freeze: what is captured has to be what is on screen.
+      if (useAcqStore.getState().paused) return;
       setLiveSpectrum(frame);
       // Report the frame rendered on the next paint, which is when it actually
       // reaches the canvas. Until this lands the backend holds off capturing,
@@ -58,11 +60,17 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // (Re)start the acquisition stream whenever acquisition params change, so the
-  // streamed trace matches the selected mode / integration / averaging.
+  // Start and stop the stream with Live, and restart it whenever acquisition
+  // params change so the trace matches the settings. Pausing stops the device
+  // capturing rather than just hiding the result — the instrument has nothing
+  // to do while the plot is frozen.
   useEffect(() => {
-    ipc.startAcquisition(params).catch(() => {/* non-Tauri: canvas uses local mock */});
-  }, [params.mode, params.integration, params.averaging, params.lightOn, params.lightPower]);
+    if (paused) {
+      ipc.stopAcquisition().catch(() => {});
+    } else {
+      ipc.startAcquisition(params).catch(() => {/* no instrument: canvas stays empty */});
+    }
+  }, [paused, params.mode, params.integration, params.averaging]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -72,11 +80,8 @@ export default function App() {
       if (e.code === 'Space') {
         e.preventDefault();
         const f = captureCurrentFrame();
-        addCapture(useAcqStore.getState().params, f.xs, f.ys, '');
+        if (f) addCapture(useAcqStore.getState().params, f.xs, f.ys, '');
       }
-      if (e.key === 'a')       setParam('mode', 'absorbance');
-      if (e.key === 'r')       setParam('mode', 'reflectance');
-      if (e.key === 't')       setParam('mode', 'transmittance');
       if (e.key === 'p')       setPaused(!paused);
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true); }
       if (e.key === 'Escape')  setCmdOpen(false);

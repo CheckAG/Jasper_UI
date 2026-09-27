@@ -15,15 +15,10 @@ function makeId() {
 }
 
 // Seed sessions shown on first run (before any user-created sessions exist)
-const SEED_SESSIONS: Session[] = [
-  { id: 's1', name: 'Maize Leaf — Run 4', device: '', method: 'NIR-Std',  operator: '', createdAt: Date.now() - 3600000,  status: 'active', captureCount: 0 },
-  { id: 's2', name: 'Wheat — Run 11',     device: '', method: 'NIR-Std',  operator: '', createdAt: Date.now() - 7200000,  status: 'active', captureCount: 0 },
-  { id: 's3', name: 'Soil A — Cal',       device: '', method: 'Soil-Cal', operator: '', createdAt: Date.now() - 86400000, status: 'active', captureCount: 0 },
-];
-
 interface SessionStore {
   sessions:    Session[];
-  activeId:    string;
+  /** null until a session exists — the app no longer ships seeded ones. */
+  activeId:    string | null;
   captures:    Capture[];
   selectedIds: string[];                     // captures overlaid on the canvas
   stash:       Record<string, Capture[]>;    // sessionId → cached captures (immer-native)
@@ -44,8 +39,8 @@ interface SessionStore {
 
 export const useSessionStore = create<SessionStore>()(
   immer((set, get) => ({
-    sessions:    SEED_SESSIONS,
-    activeId:    's1',
+    sessions:    [],
+    activeId:    null,
     captures:    [],
     selectedIds: [],
     stash:       {},
@@ -58,20 +53,23 @@ export const useSessionStore = create<SessionStore>()(
         const dbSessions = await ipc.loadSessions();
 
         if (dbSessions.length === 0) {
-          // First run — seed the DB with the sample sessions
-          for (const s of SEED_SESSIONS) await ipc.saveSession(s);
+          // First run — no sample sessions. A session names real work on a real
+          // instrument; seeding three invented ones put rows in the database
+          // that nobody measured.
           set(s => { s.hydrated = true; });
         } else {
           // Hydrate from DB — counts already come from the SQL subquery
           set(store => {
             store.sessions = dbSessions;
-            store.activeId = dbSessions[0]?.id ?? 's1';
+            store.activeId = dbSessions[0]?.id ?? null;
             store.hydrated = true;
           });
           // Load captures for the active session
           const activeId = get().activeId;
-          const caps = await ipc.loadCaptures(activeId);
-          set(s => { s.captures = caps; });
+          if (activeId) {
+            const caps = await ipc.loadCaptures(activeId);
+            set(s => { s.captures = caps; });
+          }
         }
       } catch (e) {
         console.warn('Session init failed (non-Tauri context?):', e);
@@ -84,7 +82,7 @@ export const useSessionStore = create<SessionStore>()(
       if (prevId === id) return;
 
       set((s) => {
-        s.stash[s.activeId] = s.captures;     // cache current
+        if (s.activeId) s.stash[s.activeId] = s.captures;   // cache current
         s.activeId = id;
         s.captures = s.stash[id] ?? [];        // restore cached (or empty)
         s.selectedIds = [];                    // selection is per-session
@@ -106,9 +104,13 @@ export const useSessionStore = create<SessionStore>()(
     },
 
     addCapture: (params, xs, ys, tag) => {
+      // A capture belongs to a session. With none selected there is nowhere to
+      // file it, so it is dropped rather than orphaned in the database.
+      const sessionId = get().activeId;
+      if (!sessionId) return;
       const cap: Capture = {
         id:        makeId(),
-        sessionId: get().activeId,
+        sessionId,
         label:     `Capture · #${String(get().captures.length + 1).padStart(2, '0')}`,
         timestamp: Date.now(),
         tag,

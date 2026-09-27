@@ -48,6 +48,9 @@ pub fn run() {
             cmd_calibrate_dark,
             cmd_calibrate_reference,
             cmd_calibrate_xcal,
+            cmd_get_calibration_state,
+            cmd_clear_calibration,
+            cmd_tag_last_frame,
             // Storage
             cmd_save_session,
             cmd_load_sessions,

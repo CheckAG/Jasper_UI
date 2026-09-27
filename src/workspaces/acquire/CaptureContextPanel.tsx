@@ -5,34 +5,6 @@ export function CaptureContextPanel() {
 
   return (
     <>
-      {/* AI Assist */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h5 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>AI Assist</h5>
-        </div>
-        <div style={{ border: '1px solid var(--line)', borderRadius: 12,
-          background: 'var(--paper)', padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span className="mono" style={{ fontSize: 10, color: 'var(--muted)',
-            textTransform: 'uppercase', letterSpacing: '0.1em' }}>Peak Detection</span>
-          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: 'var(--ink-2)' }}>
-            Likely C–H overtone at{' '}
-            <span style={{ color: 'var(--signal)', textDecoration: 'underline', cursor: 'pointer' }}>
-              1450 nm
-            </span>. Compare to{' '}
-            <span style={{ color: 'var(--signal)', textDecoration: 'underline', cursor: 'pointer' }}>
-              maize reference
-            </span>?
-          </p>
-          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-            {['Compare', 'Dismiss'].map(l => (
-              <button key={l} style={{ padding: '4px 10px', border: '1px solid var(--line)',
-                borderRadius: 6, background: 'var(--bg)', color: 'var(--ink-2)',
-                cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-sans)' }}>{l}</button>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* Captures */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <h5 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 600 }}>
