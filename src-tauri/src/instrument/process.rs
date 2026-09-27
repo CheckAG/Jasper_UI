@@ -29,9 +29,24 @@ pub fn average_scans(
     params: &AcqParams,
     n: usize,
 ) -> Result<SpectrumFrame, String> {
+    average_scans_with(driver, params, n, |_, _| {})
+}
+
+/// As `average_scans`, reporting `(done, total)` after each scan.
+///
+/// An average of 32 at 200 ms takes well over a minute. Without this the UI has
+/// no way to tell a long capture from a hung one.
+pub fn average_scans_with(
+    driver: &dyn SpectrumDriver,
+    params: &AcqParams,
+    n: usize,
+    mut on_progress: impl FnMut(usize, usize),
+) -> Result<SpectrumFrame, String> {
+    let total = n.max(1);
     let mut acc: Option<SpectrumFrame> = None;
-    for _ in 0..n.max(1) {
+    for i in 0..total {
         let f = driver.scan(params)?;
+        on_progress(i + 1, total);
         match &mut acc {
             None => acc = Some(f),
             Some(a) => {
@@ -46,7 +61,7 @@ pub fn average_scans(
     }
     let mut a = acc.ok_or("no scans captured")?;
     for v in &mut a.ys {
-        *v /= n.max(1) as f32;
+        *v /= total as f32;
     }
     Ok(a)
 }

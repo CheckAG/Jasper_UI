@@ -133,6 +133,22 @@ export const ipc = {
     ? tauriInvoke('cmd_start_acquisition', { params: toRustParams(params) })
     : Promise.resolve(),
 
+  /** Take one deliberate measurement of `averaging` scans, meaned. Resolves
+   *  with the finished spectrum; progress arrives via onCaptureProgress. */
+  capture: (params: AcqParams): Promise<Spectrum> => IS_TAURI
+    ? tauriInvoke<FrameDTO>('cmd_capture', { params: toRustParams(params) })
+        .then(f => frameToSpectrum(f, params))
+    : Promise.reject(new Error('Capturing needs the desktop app and a connected instrument.')),
+
+  /** Scan-by-scan progress of a capture in flight. */
+  onCaptureProgress: (cb: (done: number, total: number) => void): (() => void) => {
+    if (!IS_TAURI) return () => {};
+    let unlisten: (() => void) | null = null;
+    listen<{ done: number; total: number }>('capture-progress', e => cb(e.payload.done, e.payload.total))
+      .then(fn => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  },
+
   /** Tell the backend a streamed frame has been rendered, so it may capture the
    *  next one. Without this the acquisition loop keeps emitting into a queue the
    *  renderer is not draining and the displayed trace falls behind. */

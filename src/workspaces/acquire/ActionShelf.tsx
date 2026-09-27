@@ -7,7 +7,7 @@ import { Toggle }        from '../../components/design/Toggle';
 
 export function ActionShelf() {
   const { params, setParam } = useAcqStore();
-  const { captures, addCapture } = useSessionStore();
+  const captures = useSessionStore(s => s.captures);
   const tagRef = useRef('');
 
   // Integration bounds come from the device, not from a guess. The old 5-500 ms
@@ -21,15 +21,14 @@ export function ActionShelf() {
       .catch(() => {});
   }, []);
 
-  // A capture is a measurement. With no live frame there is nothing to record,
-  // and inventing one would put fabricated data in the session database.
-  const liveSpectrum = useAcqStore(s => s.liveSpectrum);
+  const paused = useAcqStore(s => s.paused);
+  const deviceMeta = useAcqStore(s => s.deviceMeta);
 
-  function doCapture() {
-    const s = useAcqStore.getState().liveSpectrum;
-    if (!s) return;
-    addCapture(params, s.xs, s.ys, tagRef.current);
-  }
+  const progress = useAcqStore(s => s.captureProgress);
+  const runCapture = useAcqStore(s => s.runCapture);
+
+  const busyCapture = progress !== null;
+  const pct = progress && progress.total > 0 ? progress.done / progress.total : 0;
 
   const fieldStyle: React.CSSProperties = {
     display: 'flex', flexDirection: 'column', gap: 6,
@@ -106,21 +105,42 @@ export function ActionShelf() {
 
       {/* Capture CTA */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 180px', minWidth: 0 }}>
-        <button onClick={doCapture} disabled={!liveSpectrum}
-          title={liveSpectrum ? undefined : 'No live frame — connect an instrument'}
+        <button onClick={() => runCapture(tagRef.current)}
+          disabled={busyCapture || !paused || !deviceMeta}
+          title={busyCapture
+            ? `Capturing scan ${progress?.done ?? 0} of ${progress?.total ?? 0}`
+            : !deviceMeta ? 'Connect an instrument first'
+            : !paused ? 'Turn Live off to capture'
+            : `Take ${Math.max(1, params.averaging)} scan${params.averaging > 1 ? 's' : ''} and record the average`}
           style={{
+          position: 'relative', overflow: 'hidden',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           padding: '10px 14px', background: 'var(--ink)', color: 'var(--paper)',
-          border: 0, borderRadius: 10, cursor: 'pointer',
+          border: 0, borderRadius: 10, cursor: busyCapture ? 'progress' : 'pointer',
           fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 600,
           boxShadow: '0 6px 16px -8px rgba(15,17,21,0.4), inset 0 1px 0 rgba(255,255,255,0.08)',
         }}>
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff6a6a',
-            boxShadow: '0 0 0 3px rgba(255,106,106,0.22)', flexShrink: 0 }} />
-          Capture
-          <span className="mono" style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 6px',
-            borderRadius: 4, background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)' }}>
-            Space
+          {/* Progress fills the button itself: the thing you pressed is the
+              thing that reports back, and it reads as "wait" without a separate
+              spinner competing for the same corner of the screen. */}
+          {busyCapture && (
+            <span aria-hidden style={{
+              position: 'absolute', inset: 0, transformOrigin: 'left',
+              transform: `scaleX(${pct})`, background: 'rgba(255,255,255,0.18)',
+              transition: 'transform 120ms linear', pointerEvents: 'none',
+            }} />
+          )}
+          <span style={{ position: 'relative', display: 'flex', alignItems: 'center',
+            gap: 10, width: '100%' }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%',
+              background: busyCapture ? 'var(--paper)' : '#ff6a6a',
+              boxShadow: busyCapture ? 'none' : '0 0 0 3px rgba(255,106,106,0.22)',
+              flexShrink: 0 }} />
+            {busyCapture ? `Capturing ${progress?.done ?? 0}/${progress?.total ?? 0}` : 'Capture'}
+            <span className="mono" style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 6px',
+              borderRadius: 4, background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)' }}>
+              Space
+            </span>
           </span>
         </button>
         <div style={{ display: 'flex', justifyContent: 'space-between',

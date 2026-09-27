@@ -13,13 +13,6 @@ import { ExportDialog }          from './components/overlays/ExportDialog';
 import { NewSessionDialog }      from './components/overlays/NewSessionDialog';
 import { Toaster }               from './components/overlays/Toaster';
 
-/** The frame currently on the canvas, or null when the instrument has not sent
- *  one. There is no synthetic fallback: a capture has to be something the
- *  hardware actually measured. */
-function captureCurrentFrame(): { xs: Float32Array; ys: Float32Array } | null {
-  return useAcqStore.getState().liveSpectrum;
-}
-
 export default function App() {
   const { params, paused, setParam, setPaused, setLiveSpectrum } = useAcqStore();
   const { addCapture, init: initSessions } = useSessionStore();
@@ -86,8 +79,9 @@ export default function App() {
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (e.code === 'Space') {
         e.preventDefault();
-        const f = captureCurrentFrame();
-        if (f) addCapture(useAcqStore.getState().params, f.xs, f.ys, '');
+        // Same routine as the Capture button, rather than a second way to take
+        // a capture that skipped averaging and progress entirely.
+        useAcqStore.getState().runCapture();
       }
       if (e.key === 'p')       setPaused(!paused);
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true); }

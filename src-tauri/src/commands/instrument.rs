@@ -242,6 +242,53 @@ pub fn cmd_frame_consumed(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Take one deliberate measurement: `params.averaging` scans, meaned.
+///
+/// Capture used to snapshot whatever frame the live stream had last produced,
+/// which was instantaneous and showed nothing. A capture is the thing that ends
+/// up in the session, so it is worth taking on purpose — and at 32 averages of
+/// 200 ms that is over a minute, which the operator needs to see progressing.
+///
+/// Emits "capture-progress" as `{done, total}` after each scan. The live stream
+/// is stopped first: the device can only do one thing at a time, and a capture
+/// competing with the stream for the driver mutex would just be slower.
+#[tauri::command]
+pub async fn cmd_capture(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    params: AcqParams,
+) -> Result<crate::instrument::driver::SpectrumFrame, String> {
+    state.stop_acquisition();
+    let driver = Arc::clone(&state.driver);
+    let calibration = Arc::clone(&state.calibration);
+    let last_raw = Arc::clone(&state.last_raw);
+
+    run_blocking(move || {
+        let total = params.averaging.max(1) as usize;
+        let frame = {
+            let driver = driver.lock().map_err(|e| e.to_string())?;
+            if !driver.is_connected() {
+                return Err(crate::instrument::tcd1304::NOT_CONNECTED.to_string());
+            }
+            process::average_scans_with(driver.as_ref(), &params, total, |done, total| {
+                let _ = app.emit("capture-progress", serde_json::json!({
+                    "done": done, "total": total,
+                }));
+            })?
+        };
+
+        // A capture is as taggable as any streamed frame, so it becomes the
+        // candidate for dark/reference too.
+        if let Ok(mut slot) = last_raw.lock() {
+            *slot = Some(CalFrame { ys: frame.ys.clone(), integration_ms: frame.integration_ms });
+        }
+
+        let cal = calibration.lock().map_err(|e| e.to_string())?;
+        Ok(process::process(frame, &cal))
+    })
+    .await
+}
+
 // ── Continuous acquisition ────────────────────────────────────────────────────
 
 /// Starts a background thread that emits "spectrum-frame" events continuously.
