@@ -15,6 +15,10 @@ import { Toaster }               from './components/overlays/Toaster';
 
 export default function App() {
   const { params, paused, setParam, setPaused, setLiveSpectrum } = useAcqStore();
+  // Whether a device is connected, from the backend — the stream cannot start
+  // before one is. Serial rather than the object: the poller hands back a new
+  // object every 2 s, and depending on that would restart the stream on a timer.
+  const deviceSerial = useAcqStore(s => s.deviceMeta?.serial ?? null);
   const { addCapture, init: initSessions } = useSessionStore();
   const { density, activeWs, cmdOpen, exportOpen, newSessionOpen, setCmdOpen, setWorkspace } = useUIStore();
 
@@ -64,13 +68,18 @@ export default function App() {
   // params change so the trace matches the settings. Pausing stops the device
   // capturing rather than just hiding the result — the instrument has nothing
   // to do while the plot is frozen.
+  //
+  // Connecting a device is also a start condition. This used to depend on
+  // `paused` alone: at launch it ran once with nothing connected, the start
+  // threw and was swallowed, and connecting afterwards never re-ran it — Live
+  // read as on while no frame was ever emitted.
   useEffect(() => {
-    if (paused) {
+    if (paused || !deviceSerial) {
       ipc.stopAcquisition().catch(() => {});
     } else {
       ipc.startAcquisition(params).catch(() => {/* no instrument: canvas stays empty */});
     }
-  }, [paused, params.mode, params.integration, params.averaging]);
+  }, [paused, deviceSerial, params.mode, params.integration, params.averaging]);
 
   // Global keyboard shortcuts
   useEffect(() => {
