@@ -4,7 +4,7 @@ import { useUIStore }      from '../../store/uiStore';
 import { LED }             from '../design/LED';
 
 export function TopBar() {
-  const { params, refState } = useAcqStore();
+  const { params, deviceMeta, calHeld } = useAcqStore();
   const { captures, activeSession } = useSessionStore();
   const { setCmdOpen } = useUIStore();
   const session = activeSession();
@@ -32,21 +32,36 @@ export function TopBar() {
         <span style={{ fontWeight: 500, fontSize: 14 }}>{session?.name ?? 'No session'}</span>
         <span style={{ color: 'var(--muted)' }}>·</span>
         <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
-          {session?.device} · {captures.length} captures
+          {captures.length} captures
         </span>
-        {(['dark', 'reference', 'xcal'] as const).map(k => (
-          <LED key={k} status={refState[k]} size={7} />
+        {/* Calibration actually held by the backend, not a local flag that
+            defaulted to "ok" and showed three greens on a fresh install. */}
+        {([['dark', calHeld.dark], ['reference', calHeld.reference]] as const).map(([k, on]) => (
+          <LED key={k} status={on ? 'ok' : 'pending'} size={7} />
         ))}
       </div>
 
-      {/* Instrument pill */}
+      {/* Instrument pill — the connected device, or an instruction to connect
+          one. It used to show session.device with a hardcoded 42.1 °C beside a
+          permanently green LED, so it claimed a connection whatever was true. */}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8,
         padding: '4px 10px', border: '1px solid var(--line)', borderRadius: 10,
         background: 'var(--paper)', fontSize: 12 }}>
-        <LED status="ok" size={7} />
-        <span className="mono">{session?.device ?? '—'}</span>
-        <span style={{ color: 'var(--muted)' }}>·</span>
-        <span className="mono" style={{ color: 'var(--muted)' }}>42.1 °C · {params.integration} ms</span>
+        <LED status={deviceMeta ? 'ok' : 'pending'} size={7} />
+        {deviceMeta ? (
+          <>
+            <span className="mono">
+              {deviceMeta.model}
+              {deviceMeta.serial && ` · ${deviceMeta.serial.slice(-6)}`}
+            </span>
+            <span style={{ color: 'var(--muted)' }}>·</span>
+            <span className="mono" style={{ color: 'var(--muted)' }}>
+              {params.integration} ms{params.averaging > 1 && ` × ${params.averaging}`}
+            </span>
+          </>
+        ) : (
+          <span style={{ color: 'var(--muted)' }}>Connect a device</span>
+        )}
       </div>
 
       {/* Command bar trigger */}

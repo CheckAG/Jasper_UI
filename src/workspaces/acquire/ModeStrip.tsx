@@ -1,12 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAcqStore }     from '../../store/acqStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useUIStore }      from '../../store/uiStore';
 import { ipc }             from '../../lib/ipc';
-
-/** What the backend is actually holding. Asked for, not assumed — the frames
- *  live in Rust and a local guess would claim a calibration that is not there. */
-type CalHeld = { dark: boolean; reference: boolean };
 
 export function ModeStrip() {
   const { params, paused, setParam, setPaused } = useAcqStore();
@@ -14,27 +10,11 @@ export function ModeStrip() {
   const { captures, selectedIds, clearSelected, toggleSelected } = useSessionStore();
   const pushToast = useUIStore(s => s.pushToast);
 
-  const [held, setHeld] = useState<CalHeld>({ dark: false, reference: false });
+  // Calibration state lives in the store, polled once in App.tsx, so the strip,
+  // the top bar and the Instrument panel always agree about what is held.
+  const held = useAcqStore(s => s.calHeld);
+  const refresh = useAcqStore(s => s.refreshInstrument);
   const [busy, setBusy] = useState<string | null>(null);
-
-  const refresh = useCallback(
-    () => ipc.getCalibrationState().then(state => {
-      setHeld(state);
-      // With the Abs/Refl/Trans chips gone, what the pipeline computes follows
-      // from what has been measured rather than from a button:
-      //   neither        → raw counts
-      //   dark only      → dark-subtracted counts
-      //   dark + reference → absorbance
-      // `intensity` is the mode that means "subtract the dark if there is one",
-      // and `absorbance` needs both frames, so this is the honest progression.
-      const mode = state.dark && state.reference ? 'absorbance' : 'intensity';
-      if (useAcqStore.getState().params.mode !== mode) {
-        useAcqStore.getState().setParam('mode', mode);
-      }
-    }).catch(() => {}),
-    [],
-  );
-  useEffect(() => { refresh(); }, [refresh]);
 
   /** Take a calibration, or discard the one already held.
    *

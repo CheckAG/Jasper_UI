@@ -35,6 +35,12 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-density', density);
     initSessions();
+    // One poller for instrument state, shared by the top bar, the Instrument
+    // panel and the Acquire strip.
+    const { refreshInstrument } = useAcqStore.getState();
+    refreshInstrument();
+    const instrumentPoll = setInterval(refreshInstrument, 2000);
+
     const unlisten = ipc.onSpectrumFrame(frame => {
       // A frame already in flight when the stream was stopped must not land
       // after the freeze: what is captured has to be what is on screen.
@@ -54,6 +60,7 @@ export default function App() {
       if (applied > 0 && applied !== current.integration) set('integration', applied);
     });
     return () => {
+      clearInterval(instrumentPoll);
       unlisten();
       ipc.stopAcquisition().catch(() => {});
     };
