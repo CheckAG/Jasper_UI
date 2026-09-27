@@ -170,6 +170,14 @@ export const ipc = {
     ? tauriInvoke<{ dark: boolean; reference: boolean }>('cmd_get_calibration_state')
     : Promise.resolve({ dark: false, reference: false }),
 
+  /** Store the spectrum currently on the plot as the dark or the reference.
+   *  Tags what was measured rather than measuring again, so the calibration
+   *  inherits the Averaging that produced it. */
+  tagLastFrame: (which: 'dark' | 'reference'): Promise<CalResult> => IS_TAURI
+    ? tauriInvoke<CalResultDTO>('cmd_tag_last_frame', { which })
+        .then(r => ({ status: r.status as CalResult['status'], rms: r.rms ?? undefined, warn: r.warn ?? undefined }))
+    : Promise.reject(new Error('Tagging a calibration needs the desktop app and a connected instrument.')),
+
   /** Discard a stored calibration frame: 'dark', 'reference' or 'all'. */
   clearCalibration: (which: 'dark' | 'reference' | 'all'): Promise<void> => IS_TAURI
     ? tauriInvoke('cmd_clear_calibration', { which })

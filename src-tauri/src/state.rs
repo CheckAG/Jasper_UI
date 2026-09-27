@@ -18,6 +18,14 @@ pub struct AppState {
     /// skips a capture while this is set, so a slow renderer sees the newest
     /// frame rather than a growing backlog. See `cmd_frame_consumed`.
     pub frame_in_flight: Arc<AtomicU64>,
+    /// The most recent frame as it came off the device, before dark/reference
+    /// maths. This is what the plot is showing, and what gets stored when a
+    /// frame is tagged as the dark or the reference.
+    ///
+    /// It has to be the raw frame: once a dark is held the displayed trace is
+    /// already dark-subtracted, and tagging that as the reference would store
+    /// S-D, making the pipeline compute (S-D)/((S-D)-D).
+    pub last_raw:        Arc<Mutex<Option<crate::instrument::process::CalFrame>>>,
     /// Dark/reference frames for the host-side measurement pipeline
     /// (instrument::process). Arc: the streaming thread reads it per frame.
     pub calibration:     Arc<Mutex<crate::instrument::process::Calibration>>,
@@ -73,6 +81,7 @@ impl AppState {
             db_path,
             acq_generation: Arc::new(AtomicU64::new(0)),
             frame_in_flight: Arc::new(AtomicU64::new(0)),
+            last_raw: Arc::new(Mutex::new(None)),
             calibration:    Arc::new(Mutex::new(Default::default())),
             sidecar:        SidecarHolder::new(script_path),
         }

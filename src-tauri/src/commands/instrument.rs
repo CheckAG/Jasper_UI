@@ -92,6 +92,50 @@ pub async fn cmd_get_calibration_state(
     .await
 }
 
+/// Store the frame currently on the plot as the dark or the reference.
+///
+/// Tags what has already been measured rather than going and measuring again:
+/// freeze a good trace with Live, then designate it. It also means the
+/// calibration inherits whatever Averaging produced that frame, instead of a
+/// fixed scan count that ignores the setting.
+#[tauri::command]
+pub async fn cmd_tag_last_frame(
+    state: State<'_, AppState>,
+    which: String,
+) -> Result<CalResult, String> {
+    let last_raw = Arc::clone(&state.last_raw);
+    let calibration = Arc::clone(&state.calibration);
+    run_blocking(move || {
+        let frame = {
+            let slot = last_raw.lock().map_err(|e| e.to_string())?;
+            match slot.as_ref() {
+                Some(f) => CalFrame { ys: f.ys.clone(), integration_ms: f.integration_ms },
+                None => return Err("No spectrum on the plot yet — start the stream first.".into()),
+            }
+        };
+
+        // The same sanity checks the measured path applies, on the same data.
+        let mean = frame.ys.iter().sum::<f32>() / frame.ys.len().max(1) as f32;
+        let max = frame.ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let warn = match which.as_str() {
+            "dark" if mean > 5000.0 =>
+                Some(format!("dark level high ({mean:.0} counts) — is the light off?")),
+            "reference" if max >= 55_000.0 =>
+                Some("reference is near saturation — reduce integration".to_string()),
+            _ => None,
+        };
+
+        let mut cal = calibration.lock().map_err(|e| e.to_string())?;
+        match which.as_str() {
+            "dark"      => cal.dark = Some(frame),
+            "reference" => cal.reference = Some(frame),
+            other       => return Err(format!("unknown calibration {other:?}")),
+        }
+        Ok(CalResult { status: "ok".into(), rms: None, warn })
+    })
+    .await
+}
+
 /// Discard a stored calibration frame. `which` is "dark", "reference" or "all".
 ///
 /// Measurements are only as good as the calibration behind them, so removing one
@@ -219,6 +263,7 @@ pub fn cmd_start_acquisition(
     let calibration = Arc::clone(&state.calibration);
 
     let in_flight = Arc::clone(&state.frame_in_flight);
+    let last_raw = Arc::clone(&state.last_raw);
 
     // A capture costs about 2x the integration time: the firmware discards the
     // in-progress frame and sends the next one. Pacing on 1x asks for frames
@@ -263,6 +308,12 @@ pub fn cmd_start_acquisition(
                     }
                 }
             };
+
+            // Keep the frame as the device gave it, before any dark/reference
+            // maths, so it can be tagged as a calibration later.
+            if let Ok(mut slot) = last_raw.lock() {
+                *slot = Some(CalFrame { ys: frame.ys.clone(), integration_ms: frame.integration_ms });
+            }
 
             // Raw counts → requested mode (dark/reference math, host-side)
             let frame = match calibration.lock() {

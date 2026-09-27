@@ -10,6 +10,7 @@ type CalHeld = { dark: boolean; reference: boolean };
 
 export function ModeStrip() {
   const { params, paused, setParam, setPaused } = useAcqStore();
+  const liveSpectrum = useAcqStore(s => s.liveSpectrum);
   const { captures, selectedIds, clearSelected, toggleSelected } = useSessionStore();
   const pushToast = useUIStore(s => s.pushToast);
 
@@ -47,9 +48,9 @@ export function ModeStrip() {
       if (held[which]) {
         await ipc.clearCalibration(which);
       } else {
-        const r = which === 'dark'
-          ? await ipc.calibrateDark(params)
-          : await ipc.calibrateReference(params);
+        // Tags the spectrum already on the plot — it does not go and measure
+        // again. Freeze a good trace with Live, then designate it.
+        const r = await ipc.tagLastFrame(which);
         if (r.warn) pushToast(`${which}: ${r.warn}`, 'info');
       }
       await refresh();
@@ -57,8 +58,6 @@ export function ModeStrip() {
       pushToast(String(e), 'error');
     } finally {
       setBusy(null);
-      // Capturing a calibration pauses the stream; bring it back either way.
-      ipc.startAcquisition(params).catch(() => {});
     }
   }
 
@@ -94,11 +93,14 @@ export function ModeStrip() {
         const isHeld = held[k];
         const name = k === 'dark' ? 'Dark' : 'Reference';
         return (
-          <button key={k} onClick={() => toggleCal(k)} disabled={busy !== null}
+          <button key={k} onClick={() => toggleCal(k)}
+            disabled={busy !== null || (!isHeld && !liveSpectrum)}
             style={calBtn(isHeld)}
             title={isHeld
-              ? `Discard the stored ${name.toLowerCase()} and take a new one`
-              : `Capture a ${name.toLowerCase()} measurement`}>
+              ? `Discard the stored ${name.toLowerCase()}`
+              : liveSpectrum
+                ? `Use the spectrum on the plot as the ${name.toLowerCase()}`
+                : 'No spectrum on the plot yet'}>
             <span style={{
               width: 7, height: 7, borderRadius: '50%',
               background: isHeld ? 'var(--signal)' : 'var(--accent-alarm, #c0392b)',
