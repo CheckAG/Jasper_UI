@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Density, Layout, WorkspaceId } from '../lib/types';
+import { DEFAULT_WORKSPACE } from '../lib/features';
 
 export type ToastKind = 'error' | 'info' | 'success';
 export interface Toast { id: string; message: string; kind: ToastKind; }
@@ -36,7 +37,7 @@ export const useUIStore = create<UIStore>()(
     theme:          'light',
     density:        'standard',
     layout:         'standard',
-    activeWs:       'acquire',
+    activeWs:       DEFAULT_WORKSPACE,
     cmdOpen:        false,
     exportOpen:     false,
     newSessionOpen: false,
