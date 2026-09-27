@@ -2,7 +2,7 @@
   "phase": "E",
   "title": "Real TCD1304 hardware — Instrument + Acquire only",
   "plan": "PLAN.md",
-  "updated": "2026-09-06",
+  "updated": "2026-09-27",
   "repo": "CheckAG/Jasper_UI",
   "features": [
     {
@@ -102,7 +102,7 @@
       "title": "Make acquisition params honest, and add a backpressure gate to the stream",
       "type": "fix",
       "priority": "P1",
-      "status": "in-review",
+      "status": "done",
       "issue": 6,
       "branch": "feature/6_honest-params-backpressure",
       "depends_on": [
@@ -225,7 +225,7 @@
       "title": "Surface calibration warnings and wire up the Acquire dark/reference chips",
       "type": "fix",
       "priority": "P2",
-      "status": "todo",
+      "status": "done",
       "issue": 11,
       "branch": null,
       "depends_on": [

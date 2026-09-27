@@ -1,7 +1,6 @@
 # JASPER — Spectral Data Platform (CheckAg)
 
-Desktop app for running a NIR/UV-Vis spectrometer: acquire spectra, manage
-sessions, pre-process, run chemometrics, export.
+Desktop app for running a TCD1304 CCD spectrometer: acquire, manage sessions, export.
 
 ## Tech stack
 
@@ -17,18 +16,17 @@ sessions, pre-process, run chemometrics, export.
 
 - `src/workspaces/` — Acquire, Instrument, Analyze, Chemometrics (the 4 screens)
 - `src/components/` — `layout/` shell, `design/` primitives, `overlays/` dialogs
-- `src/spectrum/` — LiveSpectrum (streaming), StaticChart (d3 canvas)
-- `src/lib/` — types, DTOs, `ipc.ts` (Tauri invoke wrappers), exporters
-- `src-tauri/src/commands/` — instrument, storage, sidecar, export
-- `src-tauri/src/instrument/` — `driver.rs` trait, `tcd1304/`, `mock.rs`, `process.rs`
+- `src/spectrum/` — LiveSpectrum (streaming), StaticChart · `src/lib/` — types, DTOs, `ipc.ts`
+- `src-tauri/src/` — `commands/` (instrument, storage, sidecar, export), `instrument/`
+  (`driver.rs` trait, `tcd1304/`, `process.rs`)
 - `python-sidecar/jasper/` — `nodes/` pre-processing, `chemometrics/`, `jcamp.py`
 
 ## Instrument protocol
 
 `tcd1304/` speaks protocol v1 over USB CDC-ACM: ASCII commands (`?`/`M`/`I<ms>`/`A`/`X`);
-replies are magic `TC` + 16-byte header + payload + CRC-16/CCITT-FALSE, spectra 3694
-signed i16. `TCD1304_Timer_ADC/PROTOCOL.md` is canonical. `JASPER_PORT` picks a real port
-or the `tools/tcd1304-sim.py` pty; unset falls back to `mock.rs`.
+replies are magic `TC` + 16-byte header + payload + CRC-16/CCITT-FALSE, spectra 3694 signed
+i16. `TCD1304_Timer_ADC/PROTOCOL.md` is canonical. `JASPER_PORT` connects a real port or a
+`tools/tcd1304-sim.py` pty at startup; unset, the app starts with no instrument.
 
 ## Running
 
@@ -39,8 +37,8 @@ snap otherwise injects an incompatible libpthread.
 ## Agent harness
 
 - `SESSION-HANDOFF.md` — read this first. What the last session did, what is half-built, what is blocked.
-- `PLAN.md` — current phase. `docs/PLAN-archive-phases-A-D.md` — shipped phases, still-binding contracts.
-- `feature_list.json` — the work items, with files, notes, dependencies and acceptance criteria.
+- `PLAN.md` — current phase · `docs/PLAN-archive-phases-A-D.md` — shipped phases, binding contracts
+- `feature_list.json` — work items with files, notes, dependencies, acceptance criteria
 - `.claude/skills/` — `/commit`, `/new-branch`, `/handoff` carry this repo's conventions.
 
 ## Conventions
@@ -48,3 +46,5 @@ snap otherwise injects an incompatible libpthread.
 - Light theme only. Do not add dark mode or lab/alternate themes.
 - No roles, personas, permissions, or sign-off. `Session.operator` is free-text metadata.
 - Rust types in `driver.rs` are mirrored by hand in `src/lib/types.ts` — change both.
+- UI state mirroring hardware comes from a backend query, never a local default.
+- Two databases: a snap terminal points `XDG_DATA_HOME` into the snap; startup logs which.

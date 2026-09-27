@@ -8,14 +8,21 @@ for anything this plan does not restate.
 
 ## Status
 
-**Done:** E2a (#3) frame codec · E6 (#8) pty simulator · E2b (#4) driver.
-**In review:** E7a (#9) device metadata panel · sample polarity fix.
-**Next:** E3 (#5) and E4 (#6) are unblocked and independent of each other.
+**9 of 12 done** — E1 (#2), E2a (#3), E2b (#4), E3 (#5), E4 (#6), E6 (#8), E7a (#9),
+E7b (#10), E7c (#11). See `feature_list.json` for the ledger.
+
+**Remaining:** E5 (#7) the Legendre calibration port, **blocked on a neon or mercury-argon
+lamp** · E8 (#13) axis from stored calibration · E9 (#14) CI.
 
 **Settled on hardware** (serial `380B1C3537323731`): the video is inverted — masked pixels read
 high, light pulls the value down — so the host applies `max_intensity - raw`. The same
 measurement confirms `DARK=16:28` is a real masked window: it holds the dark level while
 `ACTIVE` responds to light.
+
+**Beyond the original plan**, done while making the app tell the truth: every synthetic data
+path deleted (mock driver, seeded sessions, invented models), Instrument is the landing page,
+Acquire's mode chips replaced by dark/reference tagging, Capture is a real averaged measurement
+with progress, and the top bar reports the connected device.
 
 ---
 
