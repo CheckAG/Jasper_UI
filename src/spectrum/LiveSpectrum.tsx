@@ -1,6 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
 import type { AcqParams, Capture, CursorState, Spectrum } from '../lib/types';
-import { generateSpectrum } from '../lib/mockDriver';
 
 // ── Unit conversion helpers ───────────────────────────────────────────────────
 
@@ -81,7 +80,6 @@ export function LiveSpectrum({
   const pausedRef   = useRef(paused);   pausedRef.current   = paused;
   const onCursorRef = useRef(onCursor); onCursorRef.current = onCursor;
   const cursorXRef  = useRef<number | null>(null);
-  const localTRef   = useRef(0);
   const lastRealRef = useRef<Spectrum | null>(null); // last streamed frame, for pause
 
   // ── Resize observer ───────────────────────────────────────────────────────
@@ -147,16 +145,27 @@ export function LiveSpectrum({
       // the param-coherent local generator — no flicker between two shapes.
       const freshFrame = live0 && live0.params.mode === params.mode ? live0 : null;
       if (freshFrame) lastRealRef.current = freshFrame;
-      // Pause freezes the last streamed frame instead of swapping to the mock
+      // Pause freezes the last streamed frame
       const heldFrame =
         paused && lastRealRef.current?.params.mode === params.mode ? lastRealRef.current : null;
-      const streamed = paused ? heldFrame : freshFrame;
-      const live = streamed ?? generateSpectrum(params, localTRef.current);
-      const usingLocalGen = !streamed;
-      if (!paused) localTRef.current += 0.016;
+      const live = paused ? heldFrame : freshFrame;
 
-      // Axes derive from the data on screen — no hard-coded instrument
-      // geometry (real device: 1024 px / 200–1000 nm; mock: 320 px / 400–2000).
+      // Nothing to draw until the instrument sends something. There is no
+      // synthetic trace to fall back on any more — an empty canvas is the
+      // honest picture of "no device connected".
+      if (!live) {
+        ctx.clearRect(0, 0, size.w, size.h);
+        ctx.fillStyle = muted;
+        ctx.font = '13px var(--font-sans), system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No signal — connect an instrument in the Instrument workspace.',
+          size.w / 2, size.h / 2);
+        ctx.textAlign = 'start';
+        raf = requestAnimationFrame(drawFrame);
+        return;
+      }
+
+      // Axes derive from the data on screen — no hard-coded instrument geometry.
       let xMin = live.xs[0], xMax = live.xs[live.xs.length - 1];
       for (const cap of captures) {
         if (cap.xs.length) {
@@ -166,10 +175,9 @@ export function LiveSpectrum({
       }
       if (!(xMax > xMin)) { xMin = 400; xMax = 2000; }
 
-      // Mock-styled data (local generator or mock driver, empty units) is
-      // authored for the fixed per-mode ranges; backend-pipeline frames carry
-      // units (counts/abs/ratio) — autoscale to the data, snapped to a nice
-      // step so frame-to-frame noise doesn't make the axis jitter.
+      // Frames from the pipeline carry units (counts/abs/ratio) — autoscale to
+      // the data, snapped to a nice step so frame-to-frame noise does not make
+      // the axis jitter.
       let [yMin, yMax] = yRange(params.mode);
       if (live.units) {
         let lo = Infinity, hi = -Infinity;
@@ -247,21 +255,6 @@ export function LiveSpectrum({
         }
       });
       ctx.globalAlpha = 1;
-
-      // Averaging ghosts (local generator only — real averaging is upstream)
-      if (usingLocalGen && params.averaging > 1) {
-        for (let k = 0; k < Math.min(params.averaging - 1, 3); k++) {
-          const ghost = generateSpectrum(params, localTRef.current, k + 1);
-          ctx.strokeStyle = accentLive; ctx.globalAlpha = 0.1; ctx.lineWidth = 1;
-          ctx.beginPath();
-          for (let i = 0; i < ghost.xs.length; i++) {
-            const px = xPx(ghost.xs[i]), py = yPx(ghost.ys[i]);
-            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-          }
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-        }
-      }
 
       // Bold live line
       ctx.strokeStyle = accentLive; ctx.lineWidth = 1.8; ctx.globalAlpha = 1;

@@ -49,7 +49,7 @@ pub async fn cmd_discover_devices(
 ///
 /// Swaps the live driver, so a session that started with no hardware can pick
 /// up a board plugged in later — and so a port typed in by hand works exactly
-/// like a discovered one. `"mock"` selects the simulated driver.
+/// like a discovered one.
 #[tauri::command]
 pub async fn cmd_connect_device(
     state: State<'_, AppState>,
@@ -61,11 +61,8 @@ pub async fn cmd_connect_device(
         let mut slot = driver.lock().map_err(|e| e.to_string())?;
         slot.disconnect();
 
-        let mut next: Box<dyn SpectrumDriver + Send> = if device_id == "mock" {
-            Box::new(crate::instrument::mock::MockDriver::new())
-        } else {
-            Box::new(crate::instrument::tcd1304::Tcd1304Driver::new(device_id.clone()))
-        };
+        let mut next: Box<dyn SpectrumDriver + Send> =
+            Box::new(crate::instrument::tcd1304::Tcd1304Driver::new(device_id.clone()));
         // Handshake before adopting it: a failed connect must leave the previous
         // driver in place rather than swapping in one that cannot talk.
         next.connect(&device_id)?;
@@ -162,7 +159,7 @@ pub fn cmd_frame_consumed(state: State<'_, AppState>) -> Result<(), String> {
 /// Stopping the previous acquisition (if any) happens automatically.
 ///
 /// Every frame comes from `driver.scan()` through the SpectrumDriver trait, so
-/// the same loop streams from the mock or a real device unchanged.
+/// the loop is independent of which device is connected.
 #[tauri::command]
 pub fn cmd_start_acquisition(
     app: AppHandle,
@@ -282,7 +279,7 @@ pub async fn cmd_calibrate_dark(
 
         let avg = {
             let driver = driver.lock().map_err(|e| e.to_string())?;
-            driver.calibrate_dark(&params)?; // device-specific hook (mock UX delay)
+            driver.calibrate_dark(&params)?; // device-specific hook
             process::average_scans(driver.as_ref(), &params, CAL_SCANS)?
         };
 

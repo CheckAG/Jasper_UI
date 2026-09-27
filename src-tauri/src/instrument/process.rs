@@ -2,7 +2,7 @@
 // derived modes are the host's job, not the device's).
 //
 // Drivers return frames tagged by `units`: real devices send raw "counts";
-// the mock sends pre-styled data (units ""). `process()` turns raw counts
+// Frames arrive as raw counts (units "counts"). `process()` turns raw counts
 // into the requested measurement mode using the stored dark/reference
 // frames, and passes everything else through untouched — so the mock and a
 // real device flow through the same code path.

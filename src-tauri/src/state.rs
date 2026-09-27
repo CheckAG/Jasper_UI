@@ -1,6 +1,5 @@
 use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
 use std::sync::Arc;
-use crate::instrument::mock::MockDriver;
 use crate::instrument::tcd1304::Tcd1304Driver;
 use crate::instrument::driver::SpectrumDriver;
 use crate::commands::sidecar::SidecarHolder;
@@ -48,29 +47,26 @@ impl AppState {
         eprintln!("[AppState] sidecar script: {script_path}");
 
         // JASPER_PORT=/dev/ttyACM0 connects that port at startup — an explicit
-        // opt-in, since nothing else connects on the operator's behalf any more.
-        // It is also the only way to reach a tcd1304-sim pty, which carries no
-        // VID/PID and so never turns up in a port scan.
+        // opt-in. It is also the only way to reach a tools/tcd1304-sim.py pty,
+        // which carries no VID/PID and so never turns up in a port scan.
         //
-        // Unset, the app starts on the mock so the canvas has a signal, and the
-        // Instrument workspace discovers real hardware when asked.
-        let driver: Box<dyn SpectrumDriver + Send> = match std::env::var("JASPER_PORT") {
-            Ok(port) if !port.trim().is_empty() => {
-                let port = port.trim().to_string();
-                let mut d = Tcd1304Driver::new(port.clone());
-                match d.connect(&port) {
-                    Ok(()) => eprintln!("[AppState] instrument driver: TCD1304 connected on {port}"),
+        // Unset, the app starts with no instrument. A driver with no port is
+        // already exactly that: it lists nothing, reports not connected, and
+        // refuses every operation — so there is no separate "no device" type,
+        // and nothing synthesises a spectrum to fill the gap.
+        let mut driver = Tcd1304Driver::new(String::new());
+        if let Ok(port) = std::env::var("JASPER_PORT") {
+            let port = port.trim().to_string();
+            if !port.is_empty() {
+                match driver.connect(&port) {
+                    Ok(()) => eprintln!("[AppState] TCD1304 connected on {port}"),
                     // Not fatal: the workspace can connect once the device is
                     // there, and refusing to launch over a missing cable is worse.
                     Err(e) => eprintln!("[AppState] JASPER_PORT={port} did not connect: {e}"),
                 }
-                Box::new(d)
             }
-            _ => {
-                eprintln!("[AppState] instrument driver: mock (set JASPER_PORT to connect hardware at startup)");
-                Box::new(MockDriver::new())
-            }
-        };
+        }
+        let driver: Box<dyn SpectrumDriver + Send> = Box::new(driver);
 
         Self {
             driver:         Arc::new(Mutex::new(driver)),

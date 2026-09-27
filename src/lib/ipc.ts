@@ -1,7 +1,7 @@
 // ============================================================
 // JASPER — IPC boundary
 //
-// Phase A  → all calls used mock implementations
+// Phase A  → all calls used mock implementations (all removed)
 // Phase B  → instrument + storage → real Tauri invoke/listen
 // Phase C  → pipeline/chemometrics → Python sidecar
 //
@@ -11,7 +11,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen  } from '@tauri-apps/api/event';
 
-import { generateSpectrum } from './mockDriver';
 import type {
   AcqParams, Spectrum, DeviceInfo, DeviceEvent, DeviceMetadata, DiagEntry,
   CalResult, XCalResult, PipelineNode, PipelineResult,
@@ -27,7 +26,8 @@ import type {
 
 // ── Runtime flag ─────────────────────────────────────────────────────────────
 // When true: real Tauri commands are used.
-// In tests / browser dev (non-Tauri context) we fall back to mocks.
+// Outside Tauri there is no backend: those calls reject rather than
+// fabricating data.
 const IS_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -80,26 +80,11 @@ function frameToSpectrum(
   };
 }
 
-// ── Mock fallbacks (used when not in Tauri, i.e. browser dev) ─────────────────
-
-function mockPCA(labels: string[]): PCAResult {
-  return {
-    scores: labels.map((_, i) => [
-      (Math.random() - 0.5) * 4 + (i % 3) * 2,
-      (Math.random() - 0.5) * 3 + Math.floor(i / 3),
-    ]),
-    loadings: [[0.8, 0.6], [0.3, 0.9]],
-    explainedVariance: [0.61, 0.22, 0.09, 0.04],
-    labels,
-  };
-}
-
-function mockRegression(n: number): RegressionResult {
-  const actual = Array.from({ length: n }, (_, i) => 10 + i * 2 + Math.random());
-  const predicted = actual.map(v => v + (Math.random() - 0.5) * 1.5);
-  const rmsep = Math.sqrt(predicted.reduce((s, p, i) => s + (p - actual[i]) ** 2, 0) / n);
-  return { predicted, actual, rmsep, r2: 0.94, bias: 0.03, nComponents: 4 };
-}
+/** Outside Tauri there is no backend and no instrument, so every call that
+ *  would touch one rejects. Nothing is synthesised: a plot of random numbers is
+ *  indistinguishable from a measurement once it is on screen. */
+const noBackend = <T,>(what: string): Promise<T> =>
+  Promise.reject(new Error(`${what} needs the desktop app and a connected instrument.`));
 
 // ── IPC object ─────────────────────────────────────────────────────────────────
 
@@ -142,7 +127,7 @@ export const ipc = {
   scan: (params: AcqParams): Promise<Spectrum> => IS_TAURI
     ? tauriInvoke<FrameDTO>('cmd_scan', { params: toRustParams(params) })
         .then(f => frameToSpectrum(f, params))
-    : Promise.resolve(generateSpectrum(params, performance.now() / 1000)),
+    : Promise.reject(new Error('No instrument: scanning needs the desktop app and a connected device.')),
 
   startAcquisition: (params: AcqParams): Promise<void> => IS_TAURI
     ? tauriInvoke('cmd_start_acquisition', { params: toRustParams(params) })
@@ -293,7 +278,7 @@ export const ipc = {
   // ── Chemometrics (Phase C: Python sidecar) ───────────────────────────────────
 
   runPCA: (spectra: Float32Array[], labels: string[], nComponents: number): Promise<PCAResult> => {
-    if (!IS_TAURI) return new Promise(resolve => setTimeout(() => resolve(mockPCA(labels)), 400));
+    if (!IS_TAURI) return noBackend<PCAResult>('PCA');
     return sidecarCall<PCAResultDTO>('run_pca', {
       spectra: spectra.map(s => Array.from(s)),
       labels,
@@ -315,7 +300,7 @@ export const ipc = {
     if (!IS_TAURI) {
       return new Promise(resolve => setTimeout(() => resolve({
         id: Math.random().toString(36).slice(2), name: `${algorithm.toUpperCase()} · v1`,
-        algorithm, version: 1, filePath: `~/jasper/models/mock.joblib`,
+        algorithm, version: 1, filePath: `~/jasper/models/pending.joblib`,
         createdAt: Date.now(), createdBy: 'User',
         metrics: { rmsep: 0.42, r2: 0.94, bias: 0.03 }, featureRange: [400, 2000],
       }), 1500));
@@ -351,7 +336,7 @@ export const ipc = {
     algorithm: ChemAlgorithm,
     nComponents: number,
   ): Promise<RegressionResult> => {
-    if (!IS_TAURI) return new Promise(resolve => setTimeout(() => resolve(mockRegression(targets.length || 10)), 600));
+    if (!IS_TAURI) return noBackend<RegressionResult>('Regression');
     return sidecarCall<TrainResultDTO>('train_regression', {
       spectra: spectra.map(s => Array.from(s)),
       targets,
@@ -407,14 +392,9 @@ export const ipc = {
     }));
   },
 
-  loadModels: (): Promise<ModelMeta[]> => Promise.resolve([
-    { id: 'm1', name: 'Maize moisture · PLS', algorithm: 'pls', version: 4,
-      filePath: '~/jasper/models/m1.joblib', createdAt: Date.now() - 86400000,
-      createdBy: 'Mira', metrics: { rmsep: 0.42, r2: 0.94 }, featureRange: [400, 2000] },
-    { id: 'm2', name: 'Wheat protein · PLS', algorithm: 'pls', version: 2,
-      filePath: '~/jasper/models/m2.joblib', createdAt: Date.now() - 172800000,
-      createdBy: 'Anika', metrics: { rmsep: 0.61, r2: 0.91 }, featureRange: [400, 2000] },
-  ]),
+  /** Trained models on disk. Empty until something has actually been trained —
+   *  the two seeded entries here were invented, down to their metrics. */
+  loadModels: (): Promise<ModelMeta[]> => Promise.resolve([]),
 
   // ── Export (Phase D) ─────────────────────────────────────────────────────────
 
@@ -452,8 +432,8 @@ export const ipc = {
    *   payload are a placeholder — LiveSpectrum reads axis/mode from the store,
    *   and the streamed ys already match because the stream is restarted on
    *   param change (see App.tsx).
-   * Browser mode: no-op. liveSpectrum stays null and LiveSpectrum falls back to
-   *   its own param-aware mock generator, so the canvas still animates.
+   * Browser mode: no-op. liveSpectrum stays null and the canvas shows its
+   *   "no signal" state — there is no generator to fall back on.
    */
   onSpectrumFrame: (cb: (s: Spectrum) => void): (() => void) => {
     if (!IS_TAURI) return () => {};

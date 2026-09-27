@@ -4,7 +4,6 @@ import { ipc }           from '../../lib/ipc';
 import { LAMP_CONTROLS_ENABLED } from '../../lib/features';
 import { useSessionStore}from '../../store/sessionStore';
 import { Toggle }        from '../../components/design/Toggle';
-import { sampleCapture } from '../../lib/mockDriver';
 
 export function ActionShelf() {
   const { params, setParam } = useAcqStore();
@@ -22,10 +21,13 @@ export function ActionShelf() {
       .catch(() => {});
   }, []);
 
+  // A capture is a measurement. With no live frame there is nothing to record,
+  // and inventing one would put fabricated data in the session database.
+  const liveSpectrum = useAcqStore(s => s.liveSpectrum);
+
   function doCapture() {
-    // Snapshot the frame currently on the canvas (real stream or param-matched mock)
-    const { liveSpectrum } = useAcqStore.getState();
-    const s = liveSpectrum ?? sampleCapture(params, performance.now() / 1000);
+    const s = useAcqStore.getState().liveSpectrum;
+    if (!s) return;
     addCapture(params, s.xs, s.ys, tagRef.current);
   }
 
@@ -104,7 +106,9 @@ export function ActionShelf() {
 
       {/* Capture CTA */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 180px', minWidth: 0 }}>
-        <button onClick={doCapture} style={{
+        <button onClick={doCapture} disabled={!liveSpectrum}
+          title={liveSpectrum ? undefined : 'No live frame — connect an instrument'}
+          style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           padding: '10px 14px', background: 'var(--ink)', color: 'var(--paper)',
           border: 0, borderRadius: 10, cursor: 'pointer',
