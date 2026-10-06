@@ -1,91 +1,81 @@
 # Session handoff
 
-Updated 2026-09-27. Refresh with `/handoff` at the end of every working session.
+Updated 2026-10-06. Refresh with `/handoff` at the end of every working session.
 `PLAN.md` says what is planned; this says what happened.
 
 ## Now
 
-Three issues left in Phase E. Two need no hardware:
+**Guard the stream restart in `src/workspaces/instrument/InstrumentWorkspace.tsx:36`.** After a
+dark/reference capture it calls `ipc.startAcquisition(params)` without checking `paused`. Since
+`6647bdd` Live is off by default, so this is now the *normal* path, not an edge case: tag a dark
+right after connecting and the device starts scanning while the button still reads `⏸ Paused`.
+`App.tsx:44` drops the frames, so nothing shows — the device just runs unseen. One-line guard
+(`if (key !== 'xcal' && !useAcqStore.getState().paused)`), then verify on the board.
 
-- **#14 · E9** CI — `tsc -b`, eslint, `cargo test`, clippy. Nothing catches a broken build
-  today; one sat on `master` unnoticed until it blocked frontend work on 2026-09-06.
-- **#13 · E8** generate the x-axis from stored calibration instead of baking it into frames
-  in the driver. Pairs with #7 — doing them together avoids touching the same code twice.
-- **#7 · E5** port the Legendre neon calibration. **Blocked on a neon or mercury-argon lamp.**
-  The fit matches detected peaks against known emission lines; a broadband source gives it
-  nothing to match. This is the one that gets the x-axis into nm instead of pixel index.
-
-`/new-branch <issue>` off `origin/master`.
+After that, Phase E has three issues left (see `feature_list.json`): **#14 · E9** CI and
+**#13 · E8** x-axis from stored calibration need no hardware; **#7 · E5** Legendre neon
+calibration is blocked on a lamp. `/new-branch <issue>` off `origin/master`.
 
 ## State
 
 **Phase E is 9 of 12.** The app drives the real board end to end: discover by probing, connect,
 stream, freeze, capture with averaging, tag a dark and a reference, see absorbance.
 
-Verified repeatedly on serial `380B1C3537323731`, firmware `0.1`, most recently 2026-09-27.
-Hardware tests are `#[ignore]`d:
-`JASPER_PORT=/dev/ttyACM0 cargo test --test tcd1304_sim -- --ignored --nocapture`
+Verified on serial `380B1C3537323731`, firmware `0.1`, most recently 2026-10-06. Hardware tests
+are `#[ignore]`d: `JASPER_PORT=/dev/ttyACM0 cargo test --test tcd1304_sim -- --ignored --nocapture`
 
-**Every synthetic data path is gone** — the Rust mock driver, `mockDriver.ts`, the three seeded
-sessions, the invented trained models, `mockPCA`/`mockRegression`. `tools/tcd1304-sim.py` stays:
-it speaks the real protocol byte-for-byte and is the no-hardware path now, so **UI work without
-the board needs the simulator running**, not just `npm run tauri dev`.
+Done and verified on the board by the user, 2026-10-06:
+- `80a7769` — the stream now starts when a device connects (previously unverified). Confirmed by
+  observation: on first connect Live started on its own — which is what prompted the next change.
+- `01809f6` — Integration Time is a number input in ms (`src/workspaces/acquire/ActionShelf.tsx:57`),
+  not a slider. Commits on blur/Enter, clamped to the device's `integMinMs`–`integMaxMs`. Keyed on
+  `params.integration`, so a device-side clamp written back by `App.tsx:57` re-renders the field.
+- `6647bdd` — Live is off until the user turns it on. `paused` defaults to `true`
+  (`src/store/acqStore.ts:52`) and `refreshInstrument` sets it back to `true` whenever the
+  connected serial changes (`src/store/acqStore.ts:107`) — connect, disconnect, or replug.
+
+**Every synthetic data path is gone.** `tools/tcd1304-sim.py` is the no-hardware path, so UI work
+without the board needs the simulator running, not just `npm run tauri dev`.
 
 **Half-built:**
-- X-axis calibration has no backend at all. `calibrate_xcal` returns `Err`, the Instrument
-  panel's X-cal row can never reach "done", and `xs` is the pixel index. That is #7.
+- The `paused` guard above.
+- X-axis calibration has no backend. `calibrate_xcal` returns `Err`, the Instrument panel's X-cal
+  row can never reach "done", and `xs` is the pixel index. That is #7.
 - `src/workspaces/chemometrics/ChemometricsWorkspace.tsx:258` still holds a hardcoded
-  Maize/Wheat/Soil confusion matrix. It sits behind the disabled workspace flag; removing it
-  means gutting that component's layout for a screen nobody can reach.
-- `eslint` does not run at all — `hermes-parser` fails to load. Untouched, and #14 should
-  decide whether to fix or drop it.
+  Maize/Wheat/Soil confusion matrix, behind the disabled workspace flag.
+- `eslint` does not run — `hermes-parser` fails to load. #14 should fix or drop it.
 
 **Untouched:** Analyze and Chemometrics (hidden behind `ENABLED_WORKSPACES` in
 `src/lib/features.ts`), and everything in the Python sidecar.
 
 ## Uncommitted work
 
-`PLAN.md`, `feature_list.json` and this file — the status catch-up after PR #24. Everything
-else is on `origin/master` (`e34e862`). No local branches; merged ones are deleted.
+Clean. Branch `fix/11_live-view-start` (renamed from `enhancement`, tracks issue #11) is pushed,
+six commits ahead of `origin/master`: `80a7769`, `0a0c19d`, `53549d6`, `01809f6`, `6647bdd`, and
+this handoff. **No PR yet** — open it by hand (read-only token).
+
+Stale local branches: `UI-enhancement` (remote deleted), `UI_theming`, `protocol_simulation`.
+
+`01809f6` and `6647bdd` lack the `Claude-Session:` trailer the `/commit` skill asks for (the
+session URL was not available) and say "Claude Opus 5.5" in the co-author line.
 
 ## Learned this session
 
-- **There are two databases, and which one you get depends on how the app was launched.** From
-  a snap-confined terminal (VS Code) `XDG_DATA_HOME` points inside the snap, so the app opens
-  `~/snap/code/<rev>/.local/share/com.checkag.jasper/jasper.db` rather than `~/.local/share/...`.
-  Seeded sessions surviving a wipe is this, not a failed delete — it cost an hour of assuming
-  the frontend was broken. `AppState` now logs the path it opened at startup; read that first.
-- **The same bug shape appeared five times: a control or readout asserting something it never
-  checked.** The Dark/Reference chips called no calibration IPC (#11); `refState` defaulted to
-  `'ok'` so a fresh install showed three green calibration lights; the top bar showed
-  `session.device` beside a hardcoded `42.1 °C` and a permanently green LED; `params.averaging`
-  restarted the stream and changed no data; `Space` took captures by a second route that skipped
-  averaging entirely. **None were type errors or test failures**, so #14 would not have caught
-  any of them. UI state that mirrors hardware has to come from a backend query, never a local
-  default — that is now a convention in `CLAUDE.md`.
-- **Polarity was settled, then overturned, then settled again.** An unlit probe read ~2500
-  across the whole array and looked like "a dark frame near the floor, so bright must be high".
-  Masked pixels cannot respond to light, so a whole-array shift between two sessions was never
-  an illumination effect and said nothing about polarity. With a lamp attached the in-frame
-  comparison is decisive: masked window ~29300 at every integration time, illuminated down to
-  16100 at 200 ms. **Compare regions within one frame, never frames across sessions.**
-- **React invokes mount effects twice in development.** `init()` created two "Default session"
-  rows because `hydrated` was only set at the end and both calls saw an empty database. Guard
-  on entry, not on completion.
-- Do not measure device timing through a `pyserial` read loop — a `timeout=0.2` read makes
-  every capture look like it took 200 ms. The Rust test measures it properly: round-trip is
-  ~2x integration + ~40 ms.
-- Branch from the dependency, not from `master`, when `depends_on` in `feature_list.json` names
-  an unmerged issue. `cat >>` onto a missing file silently creates a stub instead of appending.
+- **Any control that restarts the stream must not fire per keystroke.** `App.tsx:82` re-runs
+  `startAcquisition` on every `params.integration` change, so a controlled `<input type=number>`
+  would send 1, 10, 100 on the way to typing 1000 — each below the device floor. Hence the
+  uncontrolled input committing on blur.
+- **Auto-starting Live on connect was the wrong default, not just a fixed bug.** `80a7769` made the
+  stream start correctly on connect; the user then decided streaming should be opt-in. Any code
+  that restarts acquisition must now respect `paused`, because "connected" no longer implies "live".
+- `run.sh` exiting with code 0 and no log lines means the window was closed — there is no
+  shutdown logging, so that is indistinguishable from a silent quit. Ask before assuming either.
+- The GLib `GTlsClientConnectionGnutls ... invalid property id` warnings at startup are noise.
 
 ## Blocked / needs a human
 
 - **A neon or mercury-argon lamp** for #7. Nothing else in the phase is blocked.
-- **The GitHub token is read-only.** `POST /issues`, `PATCH /issues/<n>` and `POST /pulls` all
-  return `403 Resource not accessible by personal access token`, and `gh` is not installed, so
-  every issue and PR this session was created by hand from a prepared body. Granting the token
-  `Issues: write` + `Pull requests: write`, or installing `gh`, removes a manual step each time.
-- **Two database backups** sit in the session scratchpad (`jasper-backup-*.db`,
-  `jasper-snap-backup-*.db`) holding the 3 seeded sessions and 52 mock-era captures that were
-  cleared on 2026-09-27. All were dated 2026-06-10, before the hardware existed. The scratchpad
-  is session-local — move them somewhere durable if any of it is wanted.
+- **Frontend changes behind a Connect click need someone at the machine** — no automation here
+  drives the Tauri WebKitGTK window.
+- **The GitHub token is read-only** (`403 Resource not accessible by personal access token` on
+  issues and PRs) and `gh` is not installed, so issues and PRs are created by hand.

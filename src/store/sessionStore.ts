@@ -64,28 +64,26 @@ export const useSessionStore = create<SessionStore>()(
       try {
         const dbSessions = await ipc.loadSessions();
 
-        if (dbSessions.length === 0) {
-          // First run. No sample sessions — a session names real work on a real
-          // instrument, and seeding invented ones put rows in the database that
-          // nobody measured. But there has to be somewhere to put a capture, so
-          // one empty session is created and made active. It holds no data; it
-          // is just a place to start.
-          const session = get().addSession(DEFAULT_SESSION_NAME, '', '');
-          set(s => { s.activeId = session.id; s.hydrated = true; });
-        } else {
-          // Hydrate from DB — counts already come from the SQL subquery
-          set(store => {
-            store.sessions = dbSessions;
-            store.activeId = dbSessions[0]?.id ?? null;
-            store.hydrated = true;
-          });
-          // Load captures for the active session
-          const activeId = get().activeId;
-          if (activeId) {
-            const caps = await ipc.loadCaptures(activeId);
-            set(s => { s.captures = caps; });
-          }
-        }
+        // Startup always lands on the default session, whatever else is in the
+        // database — the previously-active row is not remembered, and the
+        // first row SQLite hands back is not a meaningful choice.
+        // ponytail: matched by name; a renamed default makes a second one.
+        // Key it on a column if that turns out to matter.
+        set(store => {
+          store.sessions = dbSessions;
+          store.hydrated = true;
+        });
+
+        // No default in the database (first run, or it was deleted) — there has
+        // to be somewhere to put a capture, so one empty session is created.
+        // It holds no data; it is just a place to start.
+        const activeId =
+          dbSessions.find(s => s.name === DEFAULT_SESSION_NAME)?.id
+          ?? get().addSession(DEFAULT_SESSION_NAME, '', '').id;
+        set(s => { s.activeId = activeId; });
+
+        const caps = await ipc.loadCaptures(activeId);
+        if (caps.length) set(s => { s.captures = caps; });
       } catch (e) {
         console.warn('Session init failed (non-Tauri context?):', e);
         set(s => { s.hydrated = true; });
