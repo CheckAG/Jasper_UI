@@ -57,17 +57,51 @@ pub async fn cmd_connect_device(
 ) -> Result<(), String> {
     state.stop_acquisition();
     let driver = Arc::clone(&state.driver);
-    run_blocking(move || {
-        let mut slot = driver.lock().map_err(|e| e.to_string())?;
-        slot.disconnect();
+    run_blocking(move || connect_port(&driver, &device_id)).await
+}
 
-        let mut next: Box<dyn SpectrumDriver + Send> =
-            Box::new(crate::instrument::tcd1304::Tcd1304Driver::new(device_id.clone()));
-        // Handshake before adopting it: a failed connect must leave the previous
-        // driver in place rather than swapping in one that cannot talk.
-        next.connect(&device_id)?;
-        *slot = next;
-        Ok(())
+type DriverSlot = std::sync::Mutex<Box<dyn SpectrumDriver + Send>>;
+
+fn connect_port(driver: &DriverSlot, device_id: &str) -> Result<(), String> {
+    let mut slot = driver.lock().map_err(|e| e.to_string())?;
+    slot.disconnect();
+
+    let mut next: Box<dyn SpectrumDriver + Send> =
+        Box::new(crate::instrument::tcd1304::Tcd1304Driver::new(device_id.to_string()));
+    // Handshake before adopting it: a failed connect must leave the previous
+    // driver in place rather than swapping in one that cannot talk.
+    next.connect(device_id)?;
+    *slot = next;
+    Ok(())
+}
+
+/// Install a firmware image (S-record text) on the board at `device_id`, then
+/// reconnect to it. Returns the firmware version the board now reports.
+///
+/// `device_id` may be the connected instrument or one discovery listed as
+/// "bootloader" — a board left there by an interrupted update.
+///
+/// The driver is disconnected first and its lock released for the duration:
+/// the update takes tens of seconds, and holding the lock would stall every
+/// metadata poll behind it. Emits "firmware-progress" as `{stage, done, total}`.
+#[tauri::command]
+pub async fn cmd_update_firmware(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    device_id: String,
+    srec: String,
+) -> Result<String, String> {
+    state.stop_acquisition();
+    let driver = Arc::clone(&state.driver);
+    run_blocking(move || {
+        driver.lock().map_err(|e| e.to_string())?.disconnect();
+        let (port, firmware) = crate::instrument::tcd1304::update::install(&device_id, &srec, |stage, done, total| {
+            let _ = app.emit("firmware-progress", serde_json::json!({
+                "stage": stage, "done": done, "total": total,
+            }));
+        })?;
+        connect_port(&driver, &port)?;
+        Ok(firmware)
     })
     .await
 }

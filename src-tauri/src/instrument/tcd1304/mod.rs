@@ -8,6 +8,7 @@
 
 pub mod frame;
 pub mod metadata;
+pub mod update;
 
 use std::collections::VecDeque;
 use std::io::{Read, Write};
@@ -244,7 +245,7 @@ fn looks_like_a_serial_port(name: &str) -> bool {
         || base.starts_with("COM")
 }
 
-/// Open a port, handshake, and report who answered — then close it again.
+/// Open a port, ask who is there, and close it again.
 ///
 /// This is how discovery works. The device ships the stock Renesas CDC
 /// VID:PID (045B:5310), shared with other RA demo firmware, and a USB serial
@@ -253,11 +254,12 @@ fn looks_like_a_serial_port(name: &str) -> bool {
 /// even readable. Asking the device who it is, is both more reliable and the
 /// only option.
 pub fn probe(port_path: &str) -> Result<Idn, String> {
-    let io = Tcd1304Driver::open(port_path)?;
-    Ok(io.idn.clone())
+    Ok(Tcd1304Driver::identify(port_path)?.idn)
 }
 
-/// Every TCD1304 the host can see.
+/// Every TCD1304 the host can see — including one sitting in its bootloader,
+/// listed as "bootloader" so an interrupted firmware update can be retried
+/// instead of leaving a board nothing will talk to.
 ///
 /// `skip` is the port already held open by the live driver — probing it would
 /// fail with "device busy" and knock out a working connection, so the caller
@@ -270,11 +272,17 @@ pub fn discover(skip: Option<&str>) -> Vec<DeviceInfo> {
         .filter(|name| looks_like_a_serial_port(name))
         .filter(|name| Some(name.as_str()) != skip)
         .filter_map(|name| {
-            probe(&name).ok().map(|idn| DeviceInfo {
+            let idn = probe(&name).ok()?;
+            let status = match idn.model.as_str() {
+                MODEL => "available",
+                update::BOOT_MODEL => "bootloader",
+                _ => return None,
+            };
+            Some(DeviceInfo {
                 id:       name.clone(),
                 name:     friendly_name(&idn),
                 model:    idn.model,
-                status:   "available".into(),
+                status:   status.into(),
                 serial:   idn.serial,
                 firmware: idn.firmware,
             })
@@ -313,8 +321,9 @@ impl Tcd1304Driver {
         &self.port_path
     }
 
-    /// Open the port and run the handshake.
-    fn open(port_path: &str) -> Result<Io, String> {
+    /// Open the port and ask who is there, without judging the answer. Both the
+    /// application and the bootloader (see `update`) answer `X` and `*IDN?`.
+    fn identify(port_path: &str) -> Result<Io, String> {
         let port = serialport::new(port_path, BAUD)
             .timeout(Duration::from_millis(200))
             .open()
@@ -339,12 +348,17 @@ impl Tcd1304Driver {
         io.buf.clear();
 
         let idn_text = io.command("*IDN?", FrameType::Idn, CMD_TIMEOUT)?.text();
-        let idn = Idn::parse(&idn_text)?;
-        if idn.model != MODEL {
+        io.idn = Idn::parse(&idn_text)?;
+        Ok(io)
+    }
+
+    /// Open the port and run the handshake.
+    fn open(port_path: &str) -> Result<Io, String> {
+        let mut io = Self::identify(port_path)?;
+        if io.idn.model != MODEL {
             // Match on the model field, not a prefix of the whole string.
-            return Err(format!("not a {MODEL} spectrometer: {idn_text:?}"));
+            return Err(format!("not a {MODEL} spectrometer: {:?}", io.idn));
         }
-        io.idn = idn;
 
         let meta_text = io.command("M", FrameType::Metadata, CMD_TIMEOUT)?.text();
         io.meta = Metadata::parse(&meta_text);

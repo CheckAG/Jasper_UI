@@ -438,3 +438,52 @@ fn real_hardware_is_found_by_probing() {
     assert_eq!(d.serial.len(), 16);
     assert!(d.name.starts_with("TCD1304 · "), "friendly name was {:?}", d.name);
 }
+
+// ── Firmware update against the simulator's bootloader ───────────────────────
+
+use jasper_lib::instrument::tcd1304::update;
+
+/// An S-record image of `len` bytes at the simulator's APP_BASE, 32 bytes a line.
+fn srec_image(len: usize) -> String {
+    let data: Vec<u8> = (0..len).map(|i| (i * 7) as u8).collect();
+    data.chunks(32)
+        .enumerate()
+        .map(|(i, c)| {
+            let mut b = vec![(4 + c.len() + 1) as u8];
+            b.extend_from_slice(&(0x8000u32 + i as u32 * 32).to_be_bytes());
+            b.extend_from_slice(c);
+            b.push(!b.iter().fold(0u8, |a, &x| a.wrapping_add(x)));
+            format!("S3{}\n", b.iter().map(|x| format!("{x:02X}")).collect::<String>())
+        })
+        .collect()
+}
+
+#[test]
+fn firmware_update_installs_and_the_board_reports_the_new_version() {
+    let (_sim, pty) = spawn_sim(&["--no-delay"]);
+    let mut stages = Vec::new();
+    let (port, fw) = update::install(&pty, &srec_image(1000), |s, _, _| {
+        if stages.last().map(|l: &String| l != s).unwrap_or(true) {
+            stages.push(s.to_string());
+        }
+    })
+    .expect("update against the simulator");
+    assert_eq!(port, pty);
+    assert!(fw.starts_with("sim-"), "firmware should change after an update, got {fw:?}");
+    assert_eq!(stages, ["restart", "erase", "write", "verify", "boot"]);
+}
+
+#[test]
+fn a_board_left_in_its_bootloader_can_be_updated() {
+    let (_sim, pty) = spawn_sim(&["--no-delay", "--boot"]);
+    let (_, fw) = update::install(&pty, &srec_image(64), |_, _, _| {}).expect("recovery update");
+    assert!(fw.starts_with("sim-"));
+}
+
+#[test]
+fn a_bad_file_never_touches_the_board() {
+    let (_sim, pty) = spawn_sim(&["--no-delay"]);
+    assert!(update::install(&pty, "not an srec", |_, _, _| {}).is_err());
+    // Still the application, not the bootloader.
+    assert_eq!(jasper_lib::instrument::tcd1304::probe(&pty).unwrap().model, "TCD1304");
+}

@@ -25,6 +25,7 @@ import sys
 import termios
 import time
 import tty
+import zlib
 
 MAGIC = b"TC"
 VERSION = 0x01
@@ -43,7 +44,17 @@ INTEG_MS_MIN = 8
 INTEG_MS_MAX = 10000
 MAX_INTENSITY = 32767
 
-IDN = b"Jasper,TCD1304,0011223344556677,0.1"
+SERIAL = b"0011223344556677"
+FIRMWARE = b"0.1"
+
+# Bootloader side of docs/firmware-update.md. Flash is a bytearray; an image
+# that verifies becomes the firmware version "sim-<crc32>", so the host can
+# see that an update actually took.
+BOOT_MODEL = b"TCD1304-BL"
+APP_BASE = 0x8000
+APP_MAX = 0x38000
+CHUNK_MAX = 128
+BOOT_METADATA = b"APP_BASE=%d;APP_MAX=%d;CHUNK_MAX=%d;" % (APP_BASE, APP_MAX, CHUNK_MAX)
 METADATA = (
     b"PIXELS=3694;ACTIVE=32:3679;DARK=16:28;INTEG_MIN_MS=8;INTEG_MAX_MS=10000;"
     b"MAX_INTENSITY=32767;PIXEL_RATE_HZ=500000;READOUT_US=7388;SENSOR=TCD1304AP;"
@@ -119,6 +130,46 @@ def spectrum(scene, integ_ms, tick):
     return bytes(out)
 
 
+_boot = {"flash": bytearray(), "valid": False}
+
+
+def bootloader(line, seq):
+    """One bootloader command. Returns the reply, or None for a successful B."""
+    flash = _boot["flash"]
+    cmd, arg = line[:1].upper(), line[1:]
+    ack = lambda text: build_frame(TYPE_ACK, text, seq, 0)
+    err = lambda text: build_frame(TYPE_ERR, text, seq, 0)
+    if cmd in (b"?", b"*"):
+        return build_frame(TYPE_IDN, b"Jasper,%s,%s,boot-1" % (BOOT_MODEL, SERIAL), seq, 0)
+    if cmd == b"M":
+        return build_frame(TYPE_METADATA, BOOT_METADATA, seq, 0)
+    if cmd in (b"X", b"U"):
+        return ack(cmd)
+    if cmd == b"E":
+        n = int(arg)
+        if n > APP_MAX:
+            return err(b"image too large")
+        flash[:] = b"\xff" * n
+        _boot["valid"] = False
+        return ack(b"E")
+    if cmd == b"W":
+        off, _, data = arg.partition(b":")
+        off, data = int(off), bytes.fromhex(data.decode())
+        if len(data) > CHUNK_MAX or off + len(data) > len(flash):
+            return err(b"write out of range")
+        flash[off:off + len(data)] = data
+        return ack(b"W%d" % off)
+    if cmd == b"V":
+        n, _, crc = arg.partition(b":")
+        if int(n) != len(flash) or zlib.crc32(bytes(flash)) != int(crc, 16):
+            return err(b"crc mismatch")
+        _boot["valid"] = True
+        return ack(b"V")
+    if cmd == b"B":
+        return None if _boot["valid"] else err(b"no verified image")
+    return err(b"unknown command")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -128,6 +179,8 @@ def main():
                     help="reply to ACQUIRE instantly instead of taking 2x the integration time")
     ap.add_argument("--mute", action="store_true",
                     help="hold the pty open but never reply, for testing the host's timeout path")
+    ap.add_argument("--boot", action="store_true",
+                    help="start in the bootloader, as a board left there by an interrupted update")
     args = ap.parse_args()
 
     master, slave = pty.openpty()
@@ -141,6 +194,9 @@ def main():
     seq = 0
     integ_ms = 10
     pending = b""
+    firmware = FIRMWARE
+    boot = args.boot
+    flash = _boot["flash"]
 
     while True:
         try:
@@ -162,8 +218,18 @@ def main():
             if args.mute:
                 continue
             cmd = line[:1].upper()
-            if cmd in (b"?", b"*"):
-                reply = build_frame(TYPE_IDN, IDN, seq, integ_ms)
+            if boot:
+                reply = bootloader(line, seq)
+                if reply is None:   # B: verified image, back to the application
+                    boot = False
+                    firmware = b"sim-%08x" % zlib.crc32(bytes(flash))
+                    reply = build_frame(TYPE_ACK, b"B", seq, integ_ms)
+            elif cmd in (b"?", b"*"):
+                reply = build_frame(TYPE_IDN, b"Jasper,TCD1304,%s,%s" % (SERIAL, firmware), seq, integ_ms)
+            elif cmd == b"U":
+                # Real hardware resets and re-enumerates here; a pty keeps its name.
+                boot = True
+                reply = build_frame(TYPE_ACK, b"U", seq, integ_ms)
             elif cmd == b"M":
                 reply = build_frame(TYPE_METADATA, METADATA, seq, integ_ms)
             elif cmd == b"I":
