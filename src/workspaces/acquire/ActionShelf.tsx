@@ -51,13 +51,23 @@ export function ActionShelf() {
       <div style={fieldStyle}>
         <label className="mono" style={labelStyle}>Integration Time</label>
         <div style={rowStyle}>
-          <input type="range" min={range.min} max={range.max} step={1}
-            value={Math.min(Math.max(params.integration, range.min), range.max)}
-            onChange={e => setParam('integration', Number(e.target.value))}
-            style={{ flex: 1, minWidth: 0, accentColor: 'var(--signal)' }} />
-          <span className="mono" style={{ fontSize: 14, minWidth: 52, textAlign: 'right', flexShrink: 0 }}>
-            {params.integration}<small style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 3 }}>ms</small>
-          </span>
+          {/* Commits on blur/Enter, not per keystroke: every change restarts the
+              stream, so typing 1000 would otherwise send 1, 10, 100 first. Keyed
+              on the applied value so a device-side clamp shows up here. */}
+          <input key={params.integration} type="number" min={range.min} max={range.max} step={1}
+            defaultValue={params.integration}
+            onBlur={e => {
+              const v = Math.round(Number(e.target.value));
+              const clamped = Number.isFinite(v) ? Math.min(Math.max(v, range.min), range.max) : params.integration;
+              if (clamped !== params.integration) setParam('integration', clamped);
+              else e.target.value = String(params.integration);
+            }}
+            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+            className="mono"
+            style={{ flex: 1, minWidth: 0, height: 'var(--row-h)', padding: '0 10px',
+              border: '1px solid var(--line)', borderRadius: 8, background: 'var(--paper)',
+              color: 'var(--ink)', fontSize: 14, outline: 'none' }} />
+          <small className="mono" style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0 }}>ms</small>
         </div>
       </div>
 
