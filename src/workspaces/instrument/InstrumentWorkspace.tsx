@@ -212,7 +212,15 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
             {connected ? 'Switch to' : 'Available'}
           </span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {others.map(d => (
+            {others.map(d => d.status === 'bootloader' ? (
+              <div key={d.id} title="This board is waiting for firmware — install it under Firmware below"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                  border: '1px dashed var(--accent-warn)', borderRadius: 10 }}>
+                <LED status="pending" />
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</span>
+                <small className="mono" style={{ color: 'var(--accent-warn)', fontSize: 11 }}>needs firmware</small>
+              </div>
+            ) : (
               <button key={d.id} disabled={busy} onClick={() => onConnect(d.id)}
                 title={connected ? `Release ${connected.id} and connect to ${d.id}` : `Connect to ${d.id}`}
                 style={{
@@ -247,6 +255,88 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
       {error && (
         <span style={{ fontSize: 12, color: 'var(--danger, var(--muted))', lineHeight: 1.5 }}>{error}</span>
       )}
+    </div>
+  );
+}
+
+const STAGE_LABEL: Record<string, string> = {
+  restart: 'Restarting into the bootloader…', erase: 'Erasing…', write: 'Writing…',
+  verify: 'Verifying…', boot: 'Starting the new firmware…',
+};
+
+/** Install a firmware image we ship as an .srec file.
+ *
+ *  Works on the connected board, or on one discovery found sitting in its
+ *  bootloader — that is where an interrupted update leaves it, and running the
+ *  update again is the recovery. The bootloader itself is never overwritten. */
+function FirmwarePanel({ target, onDone }: { target: DeviceInfo | null; onDone: () => void }) {
+  const pushToast = useUIStore(s => s.pushToast);
+  const setPaused = useAcqStore(s => s.setPaused);
+  const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState<{ stage: string; done: number; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const running = progress !== null;
+
+  async function install() {
+    if (!target || !file) return;
+    setError(null);
+    setPaused(true);
+    setProgress({ stage: 'restart', done: 0, total: 1 });
+    const stop = ipc.onFirmwareProgress((stage, done, total) => setProgress({ stage, done, total }));
+    try {
+      const version = await ipc.updateFirmware(target.id, await file.text());
+      pushToast(`Firmware ${version} installed.`, 'info');
+      setFile(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      stop();
+      setProgress(null);
+      onDone();
+    }
+  }
+
+  const pct = progress && progress.total > 0 ? progress.done / progress.total : 0;
+  return (
+    <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
+      display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>Firmware</span>
+        {target && (
+          <span className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>
+            {target.status === 'bootloader' ? 'in bootloader' : `installed ${target.firmware}`}
+          </span>
+        )}
+      </div>
+      {!target ? (
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Connect an instrument to update its firmware.</span>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="file" accept=".srec,.s19,.mot" disabled={running}
+              onChange={e => setFile(e.target.files?.[0] ?? null)}
+              style={{ flex: 1, minWidth: 0, fontSize: 12 }} />
+            <Button variant="primary" disabled={!file || running} onClick={install}>
+              {running ? 'Updating…' : 'Install'}
+            </Button>
+          </div>
+          {running ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 12 }}>{STAGE_LABEL[progress.stage] ?? progress.stage}</span>
+              <div style={{ height: 6, borderRadius: 3, background: 'var(--tint-2)', overflow: 'hidden' }}>
+                <div style={{ width: `${pct * 100}%`, height: '100%', background: 'var(--signal)' }} />
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--accent-warn)' }}>Keep the instrument plugged in.</span>
+            </div>
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+              Use the .srec file supplied by CheckAG. If an update is interrupted the instrument
+              waits in its bootloader; run the update again to finish it.
+            </span>
+          )}
+        </>
+      )}
+      {error && <span style={{ fontSize: 12, color: 'var(--accent-alarm)', lineHeight: 1.5 }}>{error}</span>}
     </div>
   );
 }
@@ -353,6 +443,10 @@ export function InstrumentWorkspace() {
           />
           <CalibrationPanel connected={connectedId !== null} />
           <DeviceMetadataPanel meta={meta} />
+          <FirmwarePanel
+            target={devices.find(d => d.status === 'online') ?? devices.find(d => d.status === 'bootloader') ?? null}
+            onDone={refresh}
+          />
           <DiagnosticsLog entries={diag} />
         </div>
       }

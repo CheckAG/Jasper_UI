@@ -111,6 +111,21 @@ export const ipc = {
     ? tauriInvoke('cmd_disconnect_device')
     : Promise.resolve(),
 
+  /** Install an S-record firmware image on `deviceId` and reconnect to it.
+   *  Resolves with the firmware version the board reports afterwards. */
+  updateFirmware: (deviceId: string, srec: string): Promise<string> => IS_TAURI
+    ? tauriInvoke<string>('cmd_update_firmware', { deviceId, srec })
+    : Promise.reject(new Error('Firmware update needs the desktop app')),
+
+  onFirmwareProgress: (cb: (stage: string, done: number, total: number) => void): (() => void) => {
+    if (!IS_TAURI) return () => {};
+    let unlisten: (() => void) | null = null;
+    listen<{ stage: string; done: number; total: number }>('firmware-progress',
+      e => cb(e.payload.stage, e.payload.done, e.payload.total))
+      .then(fn => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  },
+
   /** Identity and limits of the connected instrument, or null when nothing is
    *  connected. Never throws for "no device" — that is an empty state, not an error. */
   getDeviceMetadata: (): Promise<DeviceMetadata | null> => IS_TAURI

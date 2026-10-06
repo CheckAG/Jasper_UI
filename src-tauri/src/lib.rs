@@ -52,6 +52,7 @@ pub fn run() {
             cmd_get_calibration_state,
             cmd_clear_calibration,
             cmd_tag_last_frame,
+            cmd_update_firmware,
             // Storage
             cmd_save_session,
             cmd_load_sessions,

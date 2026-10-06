@@ -124,8 +124,9 @@ export interface DeviceInfo {
   id:       string;
   name:     string;
   model:    string;
-  /** 'online' for the connected device, 'available' for one that answered a probe. */
-  status:   'online' | 'available';
+  /** 'online' for the connected device, 'available' for one that answered a probe,
+   *  'bootloader' for a board waiting for firmware (an interrupted update). */
+  status:   'online' | 'available' | 'bootloader';
   serial:   string;
   firmware: string;
 }
