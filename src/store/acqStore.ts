@@ -47,7 +47,9 @@ export const useAcqStore = create<AcqStore>()(
       stack: false,
     },
     cursor: null,
-    paused: false,
+    // Live starts off: streaming is something the user turns on, not a side
+    // effect of connecting.
+    paused: true,
     liveSpectrum: null,
     deviceMeta:   null,
     calHeld:      { dark: false, reference: false },
@@ -100,6 +102,9 @@ export const useAcqStore = create<AcqStore>()(
         ipc.getCalibrationState().catch(() => ({ dark: false, reference: false })),
       ]);
       set((s) => {
+        // A new (or lost) device turns Live off, so plugging the board back in
+        // never resumes a stream nobody asked for.
+        if (meta?.serial !== s.deviceMeta?.serial) s.paused = true;
         s.deviceMeta = meta;
         s.calHeld = cal;
         // With the Abs/Refl/Trans chips gone, what the pipeline computes follows
