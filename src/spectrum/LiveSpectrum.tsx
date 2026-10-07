@@ -197,6 +197,16 @@ export function LiveSpectrum({
       const xPx = (x: number) => xPad + (x - xMin) / (xMax - xMin) * (W - xPad - 14);
       const yPx = (y: number) => yPadTop + (1 - (y - yMin) / (yMax - yMin)) * (H - yPadTop - yPadBot);
 
+      // Stack mode squeezes each trace into its own band (live at the bottom,
+      // then the captures) so the whole stack fits the plot. Bands overlap by
+      // half, leaving peaks room without wasting height.
+      const span   = H - yPadTop - yPadBot;
+      const nStack = params.stack ? captures.length + (live ? 1 : 0) : 1;
+      const bandH  = span / (1 + (nStack - 1) * 0.5);
+      const yAt = (k: number) => params.stack
+        ? (y: number) => yPadTop + span - k * 0.5 * bandH - (y - yMin) / (yMax - yMin) * bandH
+        : yPx;
+
       ctx.clearRect(0, 0, W, H);
 
       // Grid
@@ -219,7 +229,8 @@ export function LiveSpectrum({
         const py = yPx(yy);
         ctx.beginPath(); ctx.moveTo(xPad, py); ctx.lineTo(W - 14, py);
         ctx.strokeStyle = (i === 0 || i === 5) ? gridStrong : grid; ctx.stroke();
-        ctx.textAlign = 'right'; ctx.fillText(yFmt(yy), xPad - 6, py + 3);
+        // Stacked bands share no y scale, so their values would mislabel.
+        if (!params.stack) { ctx.textAlign = 'right'; ctx.fillText(yFmt(yy), xPad - 6, py + 3); }
       }
 
       // Axis labels
@@ -230,16 +241,14 @@ export function LiveSpectrum({
 
       // Overlaid captures = the ones the user has selected in the rail.
       // Color-coded; in stack mode each is offset vertically with a label.
-      const overlay = captures;
-      const stackSpan = H - yPadTop - yPadBot;
-      overlay.forEach((cap, idx) => {
-        const stackOff = params.stack ? -((idx + 1) * stackSpan) / (overlay.length + 2) : 0;
+      captures.forEach((cap, idx) => {
+        const y = yAt(idx + (live ? 1 : 0));
         ctx.strokeStyle = cap.color || accentPrev;
         ctx.globalAlpha = params.stack ? 0.95 : 0.85;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         for (let i = 0; i < cap.xs.length; i++) {
-          const px = xPx(cap.xs[i]), py = yPx(cap.ys[i]) + stackOff;
+          const px = xPx(cap.xs[i]), py = y(cap.ys[i]);
           if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         }
         ctx.stroke();
@@ -247,7 +256,7 @@ export function LiveSpectrum({
           ctx.globalAlpha = 1;
           ctx.fillStyle = cap.color;
           ctx.textAlign = 'left';
-          ctx.fillText(cap.label, xPad + 4, yPx(cap.ys[0]) + stackOff - 4);
+          ctx.fillText(cap.label, xPad + 4, Math.max(yPadTop + 10, y(cap.ys[0]) - 4));
         }
       });
       ctx.globalAlpha = 1;
@@ -257,7 +266,7 @@ export function LiveSpectrum({
         ctx.strokeStyle = accentLive; ctx.lineWidth = 1.8; ctx.globalAlpha = 1;
         ctx.beginPath();
         for (let i = 0; i < live.xs.length; i++) {
-          const px = xPx(live.xs[i]), py = yPx(live.ys[i]);
+          const px = xPx(live.xs[i]), py = yAt(0)(live.ys[i]);
           if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         }
         ctx.stroke();
@@ -270,7 +279,7 @@ export function LiveSpectrum({
         const n    = primary.xs.length;
         const idx  = Math.min(n - 1, Math.max(0, Math.round((xVal - xMin) / (xMax - xMin) * (n - 1))));
         const xs = primary.xs[idx], ys = primary.ys[idx];
-        const px = xPx(xs), py = yPx(ys);
+        const px = xPx(xs), py = yAt(0)(ys);
         ctx.strokeStyle = `rgba(${inkRgb},0.28)`; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(px, yPadTop); ctx.lineTo(px, H - yPadBot);
         ctx.moveTo(xPad, py); ctx.lineTo(W - 14, py); ctx.stroke();
