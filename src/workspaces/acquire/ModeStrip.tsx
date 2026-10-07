@@ -7,6 +7,7 @@ import { ipc }             from '../../lib/ipc';
 export function ModeStrip() {
   const { params, paused, setParam, setPaused } = useAcqStore();
   const liveSpectrum = useAcqStore(s => s.liveSpectrum);
+  const deviceMeta   = useAcqStore(s => s.deviceMeta);
   const { captures, selectedIds, clearSelected, toggleSelected } = useSessionStore();
   const pushToast = useUIStore(s => s.pushToast);
 
@@ -106,13 +107,15 @@ export function ModeStrip() {
         </button>
       )}
 
-      <button onClick={() => setPaused(!paused)} style={{
+      <button onClick={() => setPaused(!paused)} disabled={!deviceMeta} style={{
         marginLeft: 'auto', padding: '6px 12px', border: '1px solid var(--line)',
         borderRadius: 8, background: paused ? 'var(--paper)' : 'var(--signal-soft)',
         color: paused ? 'var(--ink-2)' : 'var(--signal)',
-        cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 13,
+        cursor: deviceMeta ? 'pointer' : 'not-allowed', opacity: deviceMeta ? 1 : 0.5,
+        fontFamily: 'var(--font-sans)', fontSize: 13,
         display: 'flex', alignItems: 'center', gap: 8,
-      }} title={paused ? 'Resume the live stream' : 'Freeze the live stream'}>
+      }} title={!deviceMeta ? 'Connect an instrument first'
+        : paused ? 'Resume the live stream' : 'Freeze the live stream'}>
         {paused ? '⏸ Paused' : '● Live'}
         <span className="mono" style={{ fontSize: 10, color: paused ? 'var(--muted)' : 'var(--signal)' }}>P</span>
       </button>
