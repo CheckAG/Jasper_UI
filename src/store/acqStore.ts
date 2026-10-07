@@ -62,8 +62,10 @@ export const useAcqStore = create<AcqStore>()(
     setCursor: (c) =>
       set((s) => { s.cursor = c; }),
 
+    // Live needs a device. Guarded here so the button and the P shortcut both
+    // respect it.
     setPaused: (v) =>
-      set((s) => { s.paused = v; }),
+      set((s) => { if (v || s.deviceMeta) s.paused = v; }),
 
     runCapture: async (tag = '') => {
       if (get().captureProgress) return;   // one measurement at a time
@@ -104,7 +106,9 @@ export const useAcqStore = create<AcqStore>()(
       set((s) => {
         // A new (or lost) device turns Live off, so plugging the board back in
         // never resumes a stream nobody asked for.
-        if (meta?.serial !== s.deviceMeta?.serial) s.paused = true;
+        // The last frame belongs to the old device, so it goes too; otherwise
+        // Dark/Reference stay enabled against a spectrum that is gone.
+        if (meta?.serial !== s.deviceMeta?.serial) { s.paused = true; s.liveSpectrum = null; }
         s.deviceMeta = meta;
         s.calHeld = cal;
         // With the Abs/Refl/Trans chips gone, what the pipeline computes follows
