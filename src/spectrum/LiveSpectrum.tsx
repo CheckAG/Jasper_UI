@@ -56,6 +56,12 @@ function yRange(mode: AcqParams['mode']): [number, number] {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+// Plot-area insets. Shared by the draw loop and the mouse handlers, which map
+// pixels back to data for box zoom.
+const X_PAD = 48, Y_PAD_TOP = 20, Y_PAD_BOT = 28, X_PAD_RIGHT = 14;
+
+interface View { xMin: number; xMax: number; yMin: number; yMax: number }
+
 interface LiveSpectrumProps {
   params:        AcqParams;
   captures:      Capture[];
@@ -80,6 +86,15 @@ export function LiveSpectrum({
   const pausedRef   = useRef(paused);   pausedRef.current   = paused;
   const onCursorRef = useRef(onCursor); onCursorRef.current = onCursor;
   const cursorXRef  = useRef<number | null>(null);
+  // Zoom window in data units; null = fit to data. Lives across frames, so the
+  // stream does not reset it.
+  const viewRef     = useRef<View | null>(null);
+  // Axes of the last drawn frame, for turning pixels into data.
+  const axesRef     = useRef<View | null>(null);
+  // Box-zoom drag, in canvas pixels.
+  const dragRef     = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // Pan drag: where it started and the view at that moment.
+  const panRef      = useRef<{ x: number; y: number; view: View } | null>(null);
 
   // ── Resize observer ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -102,7 +117,7 @@ export function LiveSpectrum({
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
     const dpr = window.devicePixelRatio || 1;
-    const xPad = 48, yPadTop = 20, yPadBot = 28;
+    const xPad = X_PAD, yPadTop = Y_PAD_TOP, yPadBot = Y_PAD_BOT;
     let W = size.w, H = size.h;
 
     // Pull chart colours from the theme tokens so the canvas matches the rest
@@ -194,6 +209,17 @@ export function LiveSpectrum({
         }
       }
 
+      // The full data extent, before zoom. Pixel ticks and the cursor index
+      // count positions in the data, not on screen.
+      const dataXMin = xMin, dataXMax = xMax;
+      const view = viewRef.current;
+      if (view) {
+        xMin = view.xMin; xMax = view.xMax;
+        // Stacked bands have no shared y scale, so zoom is x-only there.
+        if (!params.stack) { yMin = view.yMin; yMax = view.yMax; }
+      }
+      axesRef.current = { xMin, xMax, yMin, yMax };
+
       const xPx = (x: number) => xPad + (x - xMin) / (xMax - xMin) * (W - xPad - 14);
       const yPx = (y: number) => yPadTop + (1 - (y - yMin) / (yMax - yMin)) * (H - yPadTop - yPadBot);
 
@@ -221,7 +247,7 @@ export function LiveSpectrum({
         ctx.beginPath(); ctx.moveTo(px, yPadTop); ctx.lineTo(px, H - yPadBot);
         ctx.strokeStyle = i % 2 === 0 ? gridStrong : grid; ctx.stroke();
         ctx.textAlign = 'center';
-        ctx.fillText(xTickFmt(x, params.xUnit, xMin, xMax, primary.xs.length), px, H - 10);
+        ctx.fillText(xTickFmt(x, params.xUnit, dataXMin, dataXMax, primary.xs.length), px, H - 10);
       });
       const yFmt = (v: number) => (yMax - yMin) >= 20 ? String(Math.round(v)) : v.toFixed(2);
       for (let i = 0; i <= 5; i++) {
@@ -238,6 +264,12 @@ export function LiveSpectrum({
       ctx.fillText(yLabel(params.mode, params.yUnit, live?.units), xPad, 14);
       ctx.textAlign = 'right';
       ctx.fillText(xAxisLabel(params.xUnit), W - 14, 14);
+
+      // Traces, the zoom box and the cursor stay inside the plot area when zoomed.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(xPad, yPadTop, W - xPad - X_PAD_RIGHT, H - yPadTop - yPadBot);
+      ctx.clip();
 
       // Overlaid captures = the ones the user has selected in the rail.
       // Color-coded; in stack mode each is offset vertically with a label.
@@ -272,12 +304,24 @@ export function LiveSpectrum({
         ctx.stroke();
       }
 
+      // Box-zoom rubber band
+      const drag = dragRef.current;
+      if (drag) {
+        const y0 = params.stack ? yPadTop : Math.min(drag.y0, drag.y1);
+        const h  = params.stack ? H - yPadTop - yPadBot : Math.abs(drag.y1 - drag.y0);
+        ctx.fillStyle = `rgba(${inkRgb},0.06)`;
+        ctx.strokeStyle = `rgba(${inkRgb},0.4)`; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+        ctx.fillRect(Math.min(drag.x0, drag.x1), y0, Math.abs(drag.x1 - drag.x0), h);
+        ctx.strokeRect(Math.min(drag.x0, drag.x1), y0, Math.abs(drag.x1 - drag.x0), h);
+        ctx.setLineDash([]);
+      }
+
       // Cursor crosshair
       if (cursorX !== null && cursorX > xPad && cursorX < W - 14) {
         const xVal = xMin + (cursorX - xPad) / (W - xPad - 14) * (xMax - xMin);
         // Captures can widen the axis past the primary trace — clamp to its ends.
         const n    = primary.xs.length;
-        const idx  = Math.min(n - 1, Math.max(0, Math.round((xVal - xMin) / (xMax - xMin) * (n - 1))));
+        const idx  = Math.min(n - 1, Math.max(0, Math.round((xVal - dataXMin) / (dataXMax - dataXMin) * (n - 1))));
         const xs = primary.xs[idx], ys = primary.ys[idx];
         const px = xPx(xs), py = yAt(0)(ys);
         ctx.strokeStyle = `rgba(${inkRgb},0.28)`; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
@@ -293,6 +337,7 @@ export function LiveSpectrum({
           snr: Math.round(60 + 800 * Math.sqrt(params.integration / 50) * Math.sqrt(params.averaging)),
         });
       }
+      ctx.restore();
 
       raf = requestAnimationFrame(drawFrame);
     }
@@ -301,21 +346,90 @@ export function LiveSpectrum({
     return () => cancelAnimationFrame(raf);
   }, [size.w, size.h]);
 
+  /** Zoom around the centre of the current view. f < 1 zooms in. */
+  function zoomBy(f: number) {
+    const a = axesRef.current;
+    if (!a) return;
+    const cx = (a.xMin + a.xMax) / 2, hx = (a.xMax - a.xMin) / 2 * f;
+    const cy = (a.yMin + a.yMax) / 2, hy = (a.yMax - a.yMin) / 2 * f;
+    viewRef.current = { xMin: cx - hx, xMax: cx + hx, yMin: cy - hy, yMax: cy + hy };
+  }
+
+  /** Mouse position relative to the plot container. */
+  const at = (e: React.MouseEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+
+  function endDrag() {
+    const d = dragRef.current, a = axesRef.current, el = wrapRef.current;
+    dragRef.current = null;
+    if (!d || !a || !el) return;
+    // A click, not a drag.
+    if (Math.abs(d.x1 - d.x0) < 5 || (!params.stack && Math.abs(d.y1 - d.y0) < 5)) return;
+    const pw = el.clientWidth - X_PAD - X_PAD_RIGHT, ph = el.clientHeight - Y_PAD_TOP - Y_PAD_BOT;
+    const xAt = (px: number) => a.xMin + (px - X_PAD) / pw * (a.xMax - a.xMin);
+    const yAt = (py: number) => a.yMin + (1 - (py - Y_PAD_TOP) / ph) * (a.yMax - a.yMin);
+    viewRef.current = {
+      xMin: xAt(Math.min(d.x0, d.x1)), xMax: xAt(Math.max(d.x0, d.x1)),
+      yMin: yAt(Math.max(d.y0, d.y1)), yMax: yAt(Math.min(d.y0, d.y1)),
+    };
+  }
+
+  const zoomBtn: React.CSSProperties = {
+    width: 26, height: 26, padding: 0, border: '1px solid var(--line)', borderRadius: 6,
+    background: 'var(--paper)', color: 'var(--ink-2)', cursor: 'pointer',
+    fontFamily: 'var(--font-sans)', fontSize: 14, lineHeight: 1,
+  };
+
   return (
     <div
       ref={wrapRef}
       style={{
         flex: 1, minHeight: 0, borderRadius: 14,
         background: 'var(--paper)', border: '1px solid var(--line)',
-        position: 'relative', overflow: 'hidden', cursor: 'crosshair',
+        position: 'relative', overflow: 'hidden', cursor: 'crosshair', userSelect: 'none',
+      }}
+      // Left-drag draws a zoom box; right-drag or Shift+drag pans.
+      onMouseDown={e => {
+        const p = at(e);
+        if ((e.button === 2 || (e.button === 0 && e.shiftKey)) && axesRef.current) {
+          panRef.current = { x: p.x, y: p.y, view: { ...axesRef.current } };
+        } else if (e.button === 0) {
+          dragRef.current = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+        }
       }}
       onMouseMove={e => {
-        const r = e.currentTarget.getBoundingClientRect();
-        cursorXRef.current = e.clientX - r.left;
+        const p = at(e);
+        cursorXRef.current = p.x;
+        if (dragRef.current) { dragRef.current.x1 = p.x; dragRef.current.y1 = p.y; }
+        const pan = panRef.current;
+        if (pan) {
+          const el = e.currentTarget, v = pan.view;
+          const dx = (p.x - pan.x) / (el.clientWidth - X_PAD - X_PAD_RIGHT) * (v.xMax - v.xMin);
+          const dy = (p.y - pan.y) / (el.clientHeight - Y_PAD_TOP - Y_PAD_BOT) * (v.yMax - v.yMin);
+          viewRef.current = { xMin: v.xMin - dx, xMax: v.xMax - dx, yMin: v.yMin + dy, yMax: v.yMax + dy };
+        }
       }}
-      onMouseLeave={() => { cursorXRef.current = null; onCursor?.(null); }}
+      onMouseUp={() => { panRef.current = null; endDrag(); }}
+      onMouseLeave={() => {
+        dragRef.current = null; panRef.current = null;
+        cursorXRef.current = null; onCursor?.(null);
+      }}
+      onContextMenu={e => e.preventDefault()}
+      onDoubleClick={() => { viewRef.current = null; }}
     >
       <canvas ref={canvasRef} />
+      {/* Zoom controls. mousedown is stopped so a click here never starts a box. */}
+      <div onMouseDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}
+        style={{ position: 'absolute', top: Y_PAD_TOP + 8, right: X_PAD_RIGHT + 8,
+          display: 'flex', gap: 4 }}>
+        <button style={zoomBtn} onClick={() => zoomBy(0.5)} title="Zoom in">+</button>
+        <button style={zoomBtn} onClick={() => zoomBy(2)}   title="Zoom out">−</button>
+        <button style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 12 }}
+          onClick={() => { viewRef.current = null; }}
+          title="Fit to screen (or double-click the plot). Drag to zoom a box; right-drag or Shift+drag to pan.">Fit</button>
+      </div>
     </div>
   );
 }
