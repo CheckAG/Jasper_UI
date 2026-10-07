@@ -7,69 +7,39 @@ import { LED }           from '../../components/design/LED';
 import { Button }        from '../../components/design/Button';
 import type { DeviceInfo, DeviceMetadata, DiagEntry, CalStatus } from '../../lib/types';
 
+/** Dark and reference are taken in Acquire, from the spectrum on the plot.
+ *  Only the x-axis calibration lives here. */
 function CalibrationPanel({ connected }: { connected: boolean }) {
-  const params = useAcqStore(s => s.params);
-  const calHeld = useAcqStore(s => s.calHeld);
-  const refreshCal = useAcqStore(s => s.refreshInstrument);
   const pushToast = useUIStore(s => s.pushToast);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [rms, setRms] = useState<Record<string, number>>({});
 
-  async function runCal(key: 'dark' | 'reference' | 'xcal') {
+  async function runCal(key: 'xcal') {
     setLoading(l => ({ ...l, [key]: true }));
     try {
-      const result = key === 'xcal'
-        ? await ipc.calibrateXcal()
-        : key === 'dark'
-          ? await ipc.calibrateDark(params)
-          : await ipc.calibrateReference(params);
-      if ('rms' in result && result.rms) setRms(r => ({ ...r, [key]: result.rms! }));
-      await refreshCal();
-      // The backend flags a suspect calibration (light left on, near
-      // saturation, signal too low). That belongs in front of the operator, not
-      // in a console nobody has open.
-      if ('warn' in result && result.warn) pushToast(`${key}: ${result.warn}`, 'info');
+      const result = await ipc.calibrateXcal();
+      if (result.rms) setRms(r => ({ ...r, [key]: result.rms! }));
     } catch (e) {
       pushToast(String(e), 'error');
     } finally {
-      // Dark/reference capture pauses the acquisition stream — resume it
-      if (key !== 'xcal') ipc.startAcquisition(params).catch(() => {});
       setLoading(l => ({ ...l, [key]: false }));
     }
   }
 
-  /** Status comes from the frames the backend holds, not a local flag. That
-   *  flag defaulted to 'ok', so a fresh install showed three green lights and
-   *  claimed calibrations nobody had taken. X-axis calibration has no backend
-   *  yet (E5), so it is never "done". */
-  const statusOf = (key: 'dark' | 'reference' | 'xcal'): CalStatus =>
-    key === 'xcal' ? 'pending' : (calHeld[key] ? 'ok' : 'pending');
-  const allOk = calHeld.dark && calHeld.reference;
+  /** X-axis calibration has no backend yet (E5), so it is never "done". */
+  const statusOf = (_key: 'xcal'): CalStatus => 'pending';
 
   const rows = [
-    { key: 'dark'      as const, label: 'Dark',        sub: 'Block light path, capture dark spectrum' },
-    { key: 'reference' as const, label: 'Reference',   sub: 'White standard in path, capture reference' },
-    { key: 'xcal'      as const, label: 'X-axis cal',  sub: 'Known wavelength source for axis calibration' },
+    { key: 'xcal' as const, label: 'X-axis cal', sub: 'Known wavelength source for axis calibration' },
   ];
 
   return (
     <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
       display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Calibration</span>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          padding: '5px 12px', borderRadius: 999,
-          border: `1px solid ${allOk ? 'rgba(31,157,85,0.4)' : 'var(--line)'}`,
-          background: allOk ? 'rgba(31,157,85,0.08)' : 'var(--paper)',
-          fontFamily: 'var(--font-mono)', fontSize: 11,
-          color: allOk ? 'var(--accent-ok)' : 'var(--accent-warn)',
-          textTransform: 'uppercase', letterSpacing: '0.06em',
-        }}>
-          <LED status={allOk ? 'ok' : 'pending'} size={7} />
-          {allOk ? 'Ready' : 'Not ready'}
-        </span>
-      </div>
+      <span style={{ fontSize: 14, fontWeight: 600 }}>Calibration</span>
+      <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+        Dark and reference are taken in the Acquire workspace.
+      </span>
 
       {!connected && (
         <span style={{ fontSize: 12, color: 'var(--muted)' }}>
