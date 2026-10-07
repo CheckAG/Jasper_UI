@@ -176,16 +176,6 @@ export const ipc = {
     ? tauriInvoke('cmd_stop_acquisition')
     : Promise.resolve(),
 
-  calibrateDark: (params: AcqParams): Promise<CalResult> => IS_TAURI
-    ? tauriInvoke<CalResultDTO>('cmd_calibrate_dark', { params: toRustParams(params) })
-        .then(r => ({ status: r.status as CalResult['status'], rms: r.rms ?? undefined, warn: r.warn ?? undefined }))
-    : new Promise(resolve => setTimeout(() => resolve({ status: 'ok' }), 700)),
-
-  calibrateReference: (params: AcqParams): Promise<CalResult> => IS_TAURI
-    ? tauriInvoke<CalResultDTO>('cmd_calibrate_reference', { params: toRustParams(params) })
-        .then(r => ({ status: r.status as CalResult['status'], rms: r.rms ?? undefined, warn: r.warn ?? undefined }))
-    : new Promise(resolve => setTimeout(() => resolve({ status: 'ok' }), 700)),
-
   calibrateXcal: (): Promise<XCalResult> => IS_TAURI
     ? tauriInvoke<XCalResultDTO>('cmd_calibrate_xcal')
         .then(r => ({
