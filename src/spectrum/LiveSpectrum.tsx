@@ -80,7 +80,6 @@ export function LiveSpectrum({
   const pausedRef   = useRef(paused);   pausedRef.current   = paused;
   const onCursorRef = useRef(onCursor); onCursorRef.current = onCursor;
   const cursorXRef  = useRef<number | null>(null);
-  const lastRealRef = useRef<Spectrum | null>(null); // last streamed frame, for pause
 
   // ── Resize observer ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -140,21 +139,22 @@ export function LiveSpectrum({
       const paused   = pausedRef.current;
       const cursorX  = cursorXRef.current;
 
-      // Freezing has to actually freeze. This used to advance lastRealRef on
-      // every draw, paused or not, so the "held" frame kept being replaced by
-      // the newest one and pausing changed nothing on screen.
-      if (!paused && live0) lastRealRef.current = live0;
-      const live = paused ? lastRealRef.current : live0;
+      // Live off clears the live trace, leaving the canvas to the selected
+      // captures. The store keeps the last frame, so capture and dark/reference
+      // still have it.
+      const live = paused ? null : live0;
+      // The trace that sets the x axis and carries the cursor: live, else the
+      // first selected capture.
+      const primary = live ?? captures[0] ?? null;
 
-      // Nothing to draw until the instrument sends something. There is no
-      // synthetic trace to fall back on any more — an empty canvas is the
-      // honest picture of "no device connected".
-      if (!live) {
+      if (!primary) {
         ctx.clearRect(0, 0, size.w, size.h);
         ctx.fillStyle = muted;
         ctx.font = '13px var(--font-sans), system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('No signal — connect an instrument in the Instrument workspace.',
+        ctx.fillText(paused
+          ? 'Live is off — select captures to view them.'
+          : 'No signal — connect an instrument in the Instrument workspace.',
           size.w / 2, size.h / 2);
         ctx.textAlign = 'start';
         raf = requestAnimationFrame(drawFrame);
@@ -162,7 +162,7 @@ export function LiveSpectrum({
       }
 
       // Axes derive from the data on screen — no hard-coded instrument geometry.
-      let xMin = live.xs[0], xMax = live.xs[live.xs.length - 1];
+      let xMin = primary.xs[0], xMax = primary.xs[primary.xs.length - 1];
       for (const cap of captures) {
         if (cap.xs.length) {
           xMin = Math.min(xMin, cap.xs[0]);
@@ -173,9 +173,9 @@ export function LiveSpectrum({
 
       // Frames from the pipeline carry units (counts/abs/ratio) — autoscale to
       // the data, snapped to a nice step so frame-to-frame noise does not make
-      // the axis jitter.
+      // the axis jitter. Captures alone are always autoscaled.
       let [yMin, yMax] = yRange(params.mode);
-      if (live.units) {
+      if (!live || live.units) {
         let lo = Infinity, hi = -Infinity;
         const scanYs = (ys: ArrayLike<number>) => {
           for (let i = 0; i < ys.length; i++) {
@@ -184,7 +184,7 @@ export function LiveSpectrum({
             if (v > hi) hi = v;
           }
         };
-        scanYs(live.ys);
+        if (live) scanYs(live.ys);
         captures.forEach(c => scanYs(c.ys));
         if (isFinite(lo) && isFinite(hi)) {
           const pad  = (hi - lo) * 0.08 || Math.max(1, Math.abs(hi) * 0.05);
@@ -196,6 +196,16 @@ export function LiveSpectrum({
 
       const xPx = (x: number) => xPad + (x - xMin) / (xMax - xMin) * (W - xPad - 14);
       const yPx = (y: number) => yPadTop + (1 - (y - yMin) / (yMax - yMin)) * (H - yPadTop - yPadBot);
+
+      // Stack mode squeezes each trace into its own band (live at the bottom,
+      // then the captures) so the whole stack fits the plot. Bands overlap by
+      // half, leaving peaks room without wasting height.
+      const span   = H - yPadTop - yPadBot;
+      const nStack = params.stack ? captures.length + (live ? 1 : 0) : 1;
+      const bandH  = span / (1 + (nStack - 1) * 0.5);
+      const yAt = (k: number) => params.stack
+        ? (y: number) => yPadTop + span - k * 0.5 * bandH - (y - yMin) / (yMax - yMin) * bandH
+        : yPx;
 
       ctx.clearRect(0, 0, W, H);
 
@@ -211,7 +221,7 @@ export function LiveSpectrum({
         ctx.beginPath(); ctx.moveTo(px, yPadTop); ctx.lineTo(px, H - yPadBot);
         ctx.strokeStyle = i % 2 === 0 ? gridStrong : grid; ctx.stroke();
         ctx.textAlign = 'center';
-        ctx.fillText(xTickFmt(x, params.xUnit, xMin, xMax, live.xs.length), px, H - 10);
+        ctx.fillText(xTickFmt(x, params.xUnit, xMin, xMax, primary.xs.length), px, H - 10);
       });
       const yFmt = (v: number) => (yMax - yMin) >= 20 ? String(Math.round(v)) : v.toFixed(2);
       for (let i = 0; i <= 5; i++) {
@@ -219,27 +229,26 @@ export function LiveSpectrum({
         const py = yPx(yy);
         ctx.beginPath(); ctx.moveTo(xPad, py); ctx.lineTo(W - 14, py);
         ctx.strokeStyle = (i === 0 || i === 5) ? gridStrong : grid; ctx.stroke();
-        ctx.textAlign = 'right'; ctx.fillText(yFmt(yy), xPad - 6, py + 3);
+        // Stacked bands share no y scale, so their values would mislabel.
+        if (!params.stack) { ctx.textAlign = 'right'; ctx.fillText(yFmt(yy), xPad - 6, py + 3); }
       }
 
       // Axis labels
       ctx.fillStyle = muted; ctx.textAlign = 'left';
-      ctx.fillText(yLabel(params.mode, params.yUnit, live.units), xPad, 14);
+      ctx.fillText(yLabel(params.mode, params.yUnit, live?.units), xPad, 14);
       ctx.textAlign = 'right';
       ctx.fillText(xAxisLabel(params.xUnit), W - 14, 14);
 
       // Overlaid captures = the ones the user has selected in the rail.
       // Color-coded; in stack mode each is offset vertically with a label.
-      const overlay = captures;
-      const stackSpan = H - yPadTop - yPadBot;
-      overlay.forEach((cap, idx) => {
-        const stackOff = params.stack ? -((idx + 1) * stackSpan) / (overlay.length + 2) : 0;
+      captures.forEach((cap, idx) => {
+        const y = yAt(idx + (live ? 1 : 0));
         ctx.strokeStyle = cap.color || accentPrev;
         ctx.globalAlpha = params.stack ? 0.95 : 0.85;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         for (let i = 0; i < cap.xs.length; i++) {
-          const px = xPx(cap.xs[i]), py = yPx(cap.ys[i]) + stackOff;
+          const px = xPx(cap.xs[i]), py = y(cap.ys[i]);
           if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         }
         ctx.stroke();
@@ -247,26 +256,30 @@ export function LiveSpectrum({
           ctx.globalAlpha = 1;
           ctx.fillStyle = cap.color;
           ctx.textAlign = 'left';
-          ctx.fillText(cap.label, xPad + 4, yPx(cap.ys[0]) + stackOff - 4);
+          ctx.fillText(cap.label, xPad + 4, Math.max(yPadTop + 10, y(cap.ys[0]) - 4));
         }
       });
       ctx.globalAlpha = 1;
 
       // Bold live line
-      ctx.strokeStyle = accentLive; ctx.lineWidth = 1.8; ctx.globalAlpha = 1;
-      ctx.beginPath();
-      for (let i = 0; i < live.xs.length; i++) {
-        const px = xPx(live.xs[i]), py = yPx(live.ys[i]);
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      if (live) {
+        ctx.strokeStyle = accentLive; ctx.lineWidth = 1.8; ctx.globalAlpha = 1;
+        ctx.beginPath();
+        for (let i = 0; i < live.xs.length; i++) {
+          const px = xPx(live.xs[i]), py = yAt(0)(live.ys[i]);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
 
       // Cursor crosshair
       if (cursorX !== null && cursorX > xPad && cursorX < W - 14) {
         const xVal = xMin + (cursorX - xPad) / (W - xPad - 14) * (xMax - xMin);
-        const idx  = Math.round((xVal - xMin) / (xMax - xMin) * (live.xs.length - 1));
-        const xs = live.xs[idx], ys = live.ys[idx];
-        const px = xPx(xs), py = yPx(ys);
+        // Captures can widen the axis past the primary trace — clamp to its ends.
+        const n    = primary.xs.length;
+        const idx  = Math.min(n - 1, Math.max(0, Math.round((xVal - xMin) / (xMax - xMin) * (n - 1))));
+        const xs = primary.xs[idx], ys = primary.ys[idx];
+        const px = xPx(xs), py = yAt(0)(ys);
         ctx.strokeStyle = `rgba(${inkRgb},0.28)`; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(px, yPadTop); ctx.lineTo(px, H - yPadBot);
         ctx.moveTo(xPad, py); ctx.lineTo(W - 14, py); ctx.stroke();
