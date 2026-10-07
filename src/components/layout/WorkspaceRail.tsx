@@ -2,15 +2,16 @@ import { useState } from 'react';
 import { useSessionStore } from '../../store/sessionStore';
 import { useUIStore }      from '../../store/uiStore';
 import { WORKSPACES }    from '../../lib/features';
+import { ipc }           from '../../lib/ipc';
 
 export function WorkspaceRail() {
   const { sessions, activeId, setActiveSession, deleteSession } = useSessionStore();
   const { activeWs, setWorkspace, setNewSessionOpen } = useUIStore();
   const [hoverId, setHoverId] = useState<string | null>(null);
 
-  function onDelete(id: string, name: string, e: React.MouseEvent) {
+  async function onDelete(id: string, name: string, e: React.MouseEvent) {
     e.stopPropagation();
-    if (confirm(`Delete session "${name}"? This removes its captures from the local database.`)) {
+    if (await ipc.confirm(`Delete session "${name}"? This removes its captures from the local database.`)) {
       deleteSession(id);
     }
   }

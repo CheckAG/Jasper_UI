@@ -1,4 +1,5 @@
 import { useSessionStore } from '../../store/sessionStore';
+import { ipc }             from '../../lib/ipc';
 
 export function CaptureContextPanel() {
   const { captures, selectedIds, removeCapture, toggleSelected } = useSessionStore();
@@ -21,7 +22,12 @@ export function CaptureContextPanel() {
           return (
             <div key={cap.id}
               onClick={() => toggleSelected(cap.id)}
-              onContextMenu={e => { e.preventDefault(); removeCapture(cap.id); }}
+              onContextMenu={async e => {
+                e.preventDefault();
+                if (await ipc.confirm(`Delete capture "${cap.label}"? This removes it from the local database.`)) {
+                  removeCapture(cap.id);
+                }
+              }}
               title="Click to overlay on the plot · right-click to remove"
               style={{ display: 'flex', gap: 10, alignItems: 'center',
                 padding: '6px 8px', borderRadius: 8, cursor: 'pointer',

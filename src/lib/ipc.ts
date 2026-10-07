@@ -10,6 +10,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen  } from '@tauri-apps/api/event';
+import { ask }     from '@tauri-apps/plugin-dialog';
 
 import type {
   AcqParams, Spectrum, DeviceInfo, DeviceEvent, DeviceMetadata, DiagEntry,
@@ -461,6 +462,11 @@ export const ipc = {
   saveExport: (defaultName: string, content: string): Promise<string | null> => IS_TAURI
     ? tauriInvoke<string | null>('cmd_save_export', { defaultName, content })
     : Promise.resolve(null),
+
+  /** Yes/no prompt. The webview's own window.confirm() does not show a dialog in Tauri. */
+  confirm: (message: string): Promise<boolean> => IS_TAURI
+    ? ask(message, { title: 'JASPER', kind: 'warning' })
+    : Promise.resolve(window.confirm(message)),
 
   /** Append an audit-trail entry (action log — not a persona feature). */
   saveAudit: (entry: {
