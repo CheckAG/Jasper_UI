@@ -22,8 +22,15 @@ fi
 # 3. Launch with the env vars this machine needs
 #    GTK_EXE_PREFIX=/usr        → override the snap GTK prefix VS Code injects
 #    LD_PRELOAD=.../libpthread  → force the system libpthread, not snap's
+#    -u GSETTINGS_SCHEMA_DIR    → a conda env points this at its own GLib schemas
+#    XDG_DATA_DIRS              → the VS Code snap prepends its own dirs, whose compiled
+#                                 schemas lack keys the system GTK reads; GTK then aborts
+#                                 at startup ("does not contain a key named 'antialiasing'")
+if [ -n "${XDG_DATA_DIRS_VSCODE_SNAP_ORIG:-}" ]; then
+  export XDG_DATA_DIRS="$XDG_DATA_DIRS_VSCODE_SNAP_ORIG"
+fi
 echo "Starting JASPER…  (first run compiles Rust — ~30-45s; later runs are instant)"
-exec env \
+exec env -u GSETTINGS_SCHEMA_DIR \
   GTK_EXE_PREFIX=/usr \
   LD_PRELOAD=/lib/x86_64-linux-gnu/libpthread.so.0 \
   npm run tauri dev
