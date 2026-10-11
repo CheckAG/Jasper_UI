@@ -43,8 +43,12 @@ snap otherwise injects an incompatible libpthread.
 
 ## Conventions
 
-- Light theme only. Do not add dark mode or lab/alternate themes.
-- No roles, personas, permissions, or sign-off. `Session.operator` is free-text metadata.
+- Light and dark theme behind a user switch (light default). Theme only via tokens in
+  `src/styles/tokens.css`; never key it off `prefers-color-scheme` (see Phase F plan).
+- No roles, personas, permissions, or sign-off — every feature is visible in one UI.
+  `Session.operator` is free-text metadata. A `Session` is shown to users as a **Workspace**.
+- Phase F (`docs/PLAN-migration.md`): one screen with menus; every GUI action goes through the
+  Device API dispatcher, never a private path to the hardware.
 - Rust types in `driver.rs` are mirrored by hand in `src/lib/types.ts` — change both.
 - UI state mirroring hardware comes from a backend query, never a local default.
 - Two databases: a snap terminal points `XDG_DATA_HOME` into the snap; startup logs which.
