@@ -231,7 +231,7 @@ export interface AuditEntry {
 }
 
 // --- Export ---
-export type ExportFormat = 'jcamp-dx' | 'csv-xy' | 'csv-matrix' | 'svg' | 'pdf';
+export type ExportFormat = 'jcamp-dx' | 'csv-xy' | 'csv-matrix' | 'svg' | 'pdf' | 'xlsx';
 
 export interface ExportOptions {
   format:           ExportFormat;

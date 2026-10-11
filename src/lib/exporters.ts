@@ -5,7 +5,7 @@
 // ============================================================
 
 import { ipc } from './ipc';
-import type { Capture } from './types';
+import type { Capture, Session } from './types';
 
 function safeLabel(c: Capture): string {
   return (c.tag || c.label || c.id).replace(/[,\n"]/g, ' ').trim();
@@ -86,8 +86,40 @@ export async function buildJCAMP(captures: Capture[], pipeline?: unknown[]): Pro
 export interface ExportResult { filename: string; content: string }
 
 const EXT: Record<string, string> = {
-  'jcamp-dx': 'dx', 'csv-xy': 'csv', 'csv-matrix': 'csv', 'svg': 'svg', 'pdf': 'pdf',
+  'jcamp-dx': 'dx', 'csv-xy': 'csv', 'csv-matrix': 'csv', 'svg': 'svg', 'pdf': 'pdf', 'xlsx': 'xlsx',
 };
+
+function exportFilename(format: string, sessionName: string): string {
+  const base = sessionName.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_').toLowerCase();
+  return `${base || 'jasper'}.${EXT[format] ?? 'txt'}`;
+}
+
+/** Excel workbook: a Spectra sheet laid out like CSV x/y (wavelength in column
+ *  A, one column per capture), and a Metadata sheet with a row per capture.
+ *  Opens the save dialog; returns the written path, or null if cancelled. */
+export function exportXlsx(session: Session | undefined, captures: Capture[]): Promise<string | null> {
+  // ponytail: one shared wavelength column from the first capture, same as CSV
+  // x/y. Captures taken on differently calibrated axes would need a column each.
+  const xs = captures[0]?.xs ?? new Float32Array();
+  const spectra: Array<Array<number | string | null>> = [
+    ['wavelength_nm', ...captures.map(safeLabel)],
+  ];
+  for (let i = 0; i < xs.length; i++) {
+    spectra.push([xs[i], ...captures.map(c => (i < c.ys.length ? c.ys[i] : null))]);
+  }
+  const metadata: Array<Array<number | string | null>> = [
+    ['label', 'tag', 'captured_at', 'integration_ms', 'averaging', 'mode', 'session', 'operator'],
+    ...captures.map(c => [
+      c.label, c.tag, new Date(c.timestamp).toISOString(),
+      c.params.integration, c.params.averaging, c.params.mode,
+      session?.name ?? '', session?.operator ?? '',
+    ]),
+  ];
+  return ipc.saveXlsx(exportFilename('xlsx', session?.name ?? 'jasper'), [
+    { name: 'Spectra', rows: spectra },
+    { name: 'Metadata', rows: metadata },
+  ]);
+}
 
 /** Build the file content + default filename for a given format. */
 export async function buildExport(
@@ -96,8 +128,7 @@ export async function buildExport(
   captures: Capture[],
   pipeline?: unknown[],
 ): Promise<ExportResult> {
-  const base = sessionName.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_').toLowerCase();
-  const filename = `${base || 'jasper'}.${EXT[format] ?? 'txt'}`;
+  const filename = exportFilename(format, sessionName);
 
   let content: string;
   switch (format) {

@@ -453,6 +453,15 @@ export const ipc = {
     ? tauriInvoke<string | null>('cmd_save_export', { defaultName, content })
     : Promise.resolve(null),
 
+  /** Open a native save dialog and write `sheets` as an .xlsx workbook. Cells are
+   *  numbers, strings, or null for empty. Returns the path, or null if cancelled. */
+  saveXlsx: (
+    defaultName: string,
+    sheets: Array<{ name: string; rows: Array<Array<number | string | null>> }>,
+  ): Promise<string | null> => IS_TAURI
+    ? tauriInvoke<string | null>('cmd_save_xlsx', { defaultName, sheets })
+    : Promise.resolve(null),
+
   /** Yes/no prompt. The webview's own window.confirm() does not show a dialog in Tauri. */
   confirm: (message: string): Promise<boolean> => IS_TAURI
     ? ask(message, { title: 'JASPER', kind: 'warning' })
