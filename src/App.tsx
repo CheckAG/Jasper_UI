@@ -3,11 +3,8 @@ import { useAcqStore }     from './store/acqStore';
 import { useSessionStore } from './store/sessionStore';
 import { useUIStore }      from './store/uiStore';
 import { ipc }             from './lib/ipc';
-import { isWorkspaceEnabled, DEFAULT_WORKSPACE } from './lib/features';
-import { AcquireWorkspace }      from './workspaces/acquire/AcquireWorkspace';
-import { InstrumentWorkspace }   from './workspaces/instrument/InstrumentWorkspace';
-import { AnalyzeWorkspace }      from './workspaces/analyze/AnalyzeWorkspace';
-import { ChemometricsWorkspace } from './workspaces/chemometrics/ChemometricsWorkspace';
+import { ToolboxScreen }         from './components/layout/ToolboxScreen';
+import { DeviceDialogs }         from './components/overlays/InstrumentDialogs';
 import { CommandPalette }        from './components/overlays/CommandPalette';
 import { ExportDialog }          from './components/overlays/ExportDialog';
 import { NewSessionDialog }      from './components/overlays/NewSessionDialog';
@@ -20,13 +17,7 @@ export default function App() {
   // object every 2 s, and depending on that would restart the stream on a timer.
   const deviceSerial = useAcqStore(s => s.deviceMeta?.serial ?? null);
   const { addCapture, init: initSessions } = useSessionStore();
-  const { density, activeWs, cmdOpen, exportOpen, newSessionOpen, setCmdOpen, setWorkspace } = useUIStore();
-
-  // A workspace that has since been switched off must not stay selected —
-  // otherwise it renders with no way in the rail to leave it.
-  useEffect(() => {
-    if (!isWorkspaceEnabled(activeWs)) setWorkspace(DEFAULT_WORKSPACE);
-  }, [activeWs, setWorkspace]);
+  const { density, cmdOpen, exportOpen, newSessionOpen, setCmdOpen } = useUIStore();
 
   // One-time init: density, session hydration, live-frame subscription
   useEffect(() => {
@@ -93,6 +84,8 @@ export default function App() {
         useAcqStore.getState().runCapture();
       }
       if (e.key === 'p')       setPaused(!paused);
+      if (e.key === 'd')       useAcqStore.getState().toggleCal('dark');
+      if (e.key === 'r')       useAcqStore.getState().toggleCal('reference');
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true); }
       if (e.key === 'Escape')  setCmdOpen(false);
     }
@@ -102,10 +95,9 @@ export default function App() {
 
   return (
     <>
-      {activeWs === 'acquire'      && <AcquireWorkspace />}
-      {activeWs === 'instrument'   && <InstrumentWorkspace />}
-      {activeWs === 'analyze'      && <AnalyzeWorkspace />}
-      {activeWs === 'chemometrics' && <ChemometricsWorkspace />}
+      {/* One screen. Analyze and Chemometrics are not rendered (features.ts). */}
+      <ToolboxScreen />
+      <DeviceDialogs />
 
       {cmdOpen        && <CommandPalette />}
       {exportOpen     && <ExportDialog />}

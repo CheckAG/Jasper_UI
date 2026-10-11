@@ -16,8 +16,6 @@ export interface AcqParams {
   acqMode:     AcqMode;
   integration: number;   // ms
   averaging:   number;   // scan count
-  lightOn:     boolean;
-  lightPower:  number;   // 0–100 %
   xUnit:       XUnit;
   yUnit:       YUnit;
   lockAxes:    boolean;

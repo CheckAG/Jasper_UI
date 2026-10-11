@@ -1,46 +1,17 @@
-import { useState } from 'react';
 import { useAcqStore }     from '../../store/acqStore';
 import { useSessionStore } from '../../store/sessionStore';
-import { useUIStore }      from '../../store/uiStore';
-import { ipc }             from '../../lib/ipc';
 
 export function ModeStrip() {
   const { params, paused, setParam, setPaused } = useAcqStore();
   const liveSpectrum = useAcqStore(s => s.liveSpectrum);
   const deviceMeta   = useAcqStore(s => s.deviceMeta);
   const { captures, selectedIds, clearSelected, toggleSelected } = useSessionStore();
-  const pushToast = useUIStore(s => s.pushToast);
 
-  // Calibration state lives in the store, polled once in App.tsx, so the strip,
-  // the top bar and the Instrument panel always agree about what is held.
+  // Calibration state lives in the store, polled once in App.tsx, so the
+  // toolbar, the menu and the references card always agree about what is held.
   const held = useAcqStore(s => s.calHeld);
-  const refresh = useAcqStore(s => s.refreshInstrument);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  /** Take a calibration, or discard the one already held.
-   *
-   *  The button is the state: with nothing stored it reads "Dark" and captures
-   *  one; with a frame stored it reads "Remove Dark" and flushes it. A dark
-   *  taken at the wrong integration, or a reference against the wrong standard,
-   *  is worse than none — so getting rid of one has to be one press. */
-  async function toggleCal(which: 'dark' | 'reference') {
-    setBusy(which);
-    try {
-      if (held[which]) {
-        await ipc.clearCalibration(which);
-      } else {
-        // Tags the spectrum already on the plot — it does not go and measure
-        // again. Freeze a good trace with Live, then designate it.
-        const r = await ipc.tagLastFrame(which);
-        if (r.warn) pushToast(`${which}: ${r.warn}`, 'info');
-      }
-      await refresh();
-    } catch (e) {
-      pushToast(String(e), 'error');
-    } finally {
-      setBusy(null);
-    }
-  }
+  const busy = useAcqStore(s => s.calBusy);
+  const toggleCal = useAcqStore(s => s.toggleCal);
 
   const allSelected = captures.length > 0 && selectedIds.length === captures.length;
 

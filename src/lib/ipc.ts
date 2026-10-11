@@ -61,7 +61,6 @@ function toRustParams(p: AcqParams) {
   return {
     mode: p.mode, acq_mode: p.acqMode,
     integration: p.integration, averaging: p.averaging,
-    light_on: p.lightOn, light_power: p.lightPower,
     x_unit: p.xUnit, y_unit: p.yUnit,
     lock_axes: p.lockAxes, stack: p.stack,
   };
@@ -508,7 +507,7 @@ export const ipc = {
           acqMode: 'continuous',
           integration: event.payload.integration_ms,
           averaging: 4,
-          lightOn: true, lightPower: 80, xUnit: 'nm', yUnit: 'au', lockAxes: false, stack: false,
+          xUnit: 'nm', yUnit: 'au', lockAxes: false, stack: false,
         },
       });
     }).then(fn => { unlisten = fn; });

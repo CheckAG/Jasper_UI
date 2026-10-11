@@ -171,7 +171,7 @@ export function LiveSpectrum({
         ctx.textAlign = 'center';
         ctx.fillText(paused
           ? 'Live is off — select captures to view them.'
-          : 'No signal — connect an instrument in the Instrument workspace.',
+          : 'No signal — connect an instrument (Device ▸ Instruments).',
           size.w / 2, size.h / 2);
         ctx.textAlign = 'start';
         raf = requestAnimationFrame(drawFrame);

@@ -2,13 +2,12 @@ import { useState, useEffect } from 'react';
 import { useAcqStore }   from '../../store/acqStore';
 import { useUIStore }    from '../../store/uiStore';
 import { ipc }           from '../../lib/ipc';
-import { WorkspaceShell }from '../../components/layout/WorkspaceShell';
-import { LED }           from '../../components/design/LED';
-import { Button }        from '../../components/design/Button';
-import type { DeviceInfo, DeviceMetadata, DiagEntry, CalStatus } from '../../lib/types';
+import { LED }           from '../design/LED';
+import { Button }        from '../design/Button';
+import { Modal }         from './Modal';
+import type { DeviceInfo, DiagEntry, CalStatus } from '../../lib/types';
 
-/** Dark and reference are taken in Acquire, from the spectrum on the plot.
- *  Only the x-axis calibration lives here. */
+/** X-axis (wavelength) calibration. Dark and reference are taken from the toolbar. */
 function CalibrationPanel({ connected }: { connected: boolean }) {
   const pushToast = useUIStore(s => s.pushToast);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -34,11 +33,10 @@ function CalibrationPanel({ connected }: { connected: boolean }) {
   ];
 
   return (
-    <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
-      display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <span style={{ fontSize: 14, fontWeight: 600 }}>Calibration</span>
-      <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-        Dark and reference are taken in the Acquire workspace.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+        Fits the pixel → nm axis from a neon or argon lamp. Until it is fitted the x-axis is the
+        pixel index. Dark and reference are taken from the toolbar.
       </span>
 
       {!connected && (
@@ -91,18 +89,27 @@ function Field({ label, value, mono = true }: { label: string; value: string; mo
  *  no lamp, no drift estimate and no queue, so those four readouts were showing
  *  numbers the device never sent. Everything here is read during the handshake
  *  or counted from frame headers. */
-function DeviceMetadataPanel({ meta }: { meta: DeviceMetadata | null }) {
+export function InstrumentCard() {
+  const meta = useAcqStore(s => s.deviceMeta);
+  const setDialog = useUIStore(s => s.setDialog);
   return (
-    <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
-      display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <span style={{ fontSize: 14, fontWeight: 600 }}>Device</span>
+    <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', background: 'var(--paper)',
+      padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span className="mono" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.12em',
+          color: 'var(--muted)' }}>Instrument</span>
+        <LED status={meta ? 'ok' : 'pending'} size={7} />
+      </div>
       {!meta ? (
-        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-          No instrument connected.
-        </span>
+        <>
+          <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+            No instrument connected. Connect one, or run tools/tcd1304-sim.py and enter the pty it prints.
+          </span>
+          <Button variant="primary" onClick={() => setDialog('instruments')}>Connect…</Button>
+        </>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="Model"    value={meta.model} />
             <Field label="Sensor"   value={meta.sensor || '—'} />
             <Field label="Serial"   value={meta.serial || '—'} />
@@ -111,7 +118,7 @@ function DeviceMetadataPanel({ meta }: { meta: DeviceMetadata | null }) {
             <Field label="Protocol" value={`v${meta.protocolVersion}`} />
           </div>
           <div style={{ height: 1, background: 'var(--line)' }} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="Pixels"      value={meta.pixels.toLocaleString()} />
             <Field label="Integration" value={`${meta.integMinMs}–${meta.integMaxMs} ms`} />
             <Field label="Full scale"  value={meta.maxIntensity.toLocaleString()} />
@@ -148,10 +155,9 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
   const connected = devices.find(d => d.id === connectedId) ?? null;
   const others = devices.filter(d => d.id !== connectedId);
   return (
-    <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
-      display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Instruments</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Every serial port is probed with *IDN?.</span>
         <Button onClick={onRescan} disabled={busy}>{busy ? 'Scanning…' : 'Rescan'}</Button>
       </div>
 
@@ -183,7 +189,7 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
           </span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {others.map(d => d.status === 'bootloader' ? (
-              <div key={d.id} title="This board is waiting for firmware — install it under Firmware below"
+              <div key={d.id} title="This board is waiting for firmware — install it from Device ▸ Firmware update"
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
                   border: '1px dashed var(--accent-warn)', borderRadius: 10 }}>
                 <LED status="pending" />
@@ -268,10 +274,9 @@ function FirmwarePanel({ target, onDone }: { target: DeviceInfo | null; onDone: 
 
   const pct = progress && progress.total > 0 ? progress.done / progress.total : 0;
   return (
-    <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
-      display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>Firmware</span>
+        <span style={{ fontSize: 13, fontWeight: 500 }}>{target ? target.name : 'No instrument'}</span>
         {target && (
           <span className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>
             {target.status === 'bootloader' ? 'in bootloader' : `installed ${target.firmware}`}
@@ -316,16 +321,14 @@ function DiagnosticsLog({ entries }: { entries: DiagEntry[] }) {
     info: 'var(--accent-ok)', warn: 'var(--accent-warn)', error: 'var(--accent-alarm)',
   };
   return (
-    <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', padding: 18,
-      display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <span style={{ fontSize: 14, fontWeight: 600 }}>Diagnostics</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {entries.length === 0 && (
         <span style={{ fontSize: 12, color: 'var(--muted)' }}>
           Nothing logged yet. Connects, device errors and dropped frames appear here.
         </span>
       )}
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {entries.slice(-15).reverse().map(e => (
+        {entries.slice(-50).reverse().map(e => (
           <div key={e.id} style={{ display: 'grid', gridTemplateColumns: '80px 40px 1fr',
             gap: 12, padding: '6px 0', borderBottom: '1px solid var(--line)',
             fontSize: 12, color: 'var(--ink-2)' }}>
@@ -343,93 +346,97 @@ function DiagnosticsLog({ entries }: { entries: DiagEntry[] }) {
   );
 }
 
-export function InstrumentWorkspace() {
-  const [devices, setDevices]   = useState<DeviceInfo[]>([]);
-  // Device metadata comes from the shared store, polled once in App.tsx.
-  const meta = useAcqStore(s => s.deviceMeta);
+/** Instruments the host can see. Discovery is run on open and on Rescan only —
+ *  it opens and handshakes every serial port on the machine, which is not
+ *  something to do on a timer. */
+function useDevices() {
+  const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const refreshInstrument = useAcqStore(s => s.refreshInstrument);
-  const [diag, setDiag]         = useState<DiagEntry[]>([]);
-  const [busy, setBusy]         = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-
-  // The connected device is whichever one the backend reports as online. Kept
-  // from the backend rather than in local state, so the UI cannot claim a
-  // connection the driver does not have.
-  const connectedId = devices.find(d => d.status === 'online')?.id ?? null;
+  const [busy, setBusy]   = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = () => Promise.all([
     ipc.discoverDevices().then(setDevices).catch(() => setDevices([])),
     refreshInstrument(),
-    ipc.getDiagnostics().then(setDiag).catch(() => setDiag([])),
   ]);
-
-  const rescan = () => { setBusy(true); setError(null); refresh().finally(() => setBusy(false)); };
-
-  const connect = (id: string) => {
+  const run = (p: () => Promise<unknown>) => {
     setBusy(true); setError(null);
-    ipc.connectDevice(id)
-      .then(refresh)
-      .catch(e => setError(String(e)))
-      .finally(() => setBusy(false));
+    p().then(refresh).catch(e => setError(String(e))).finally(() => setBusy(false));
   };
+  useEffect(() => { run(() => Promise.resolve()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  return { devices, busy, error, refresh, run };
+}
 
-  const disconnect = () => {
-    setBusy(true); setError(null);
-    ipc.disconnectDevice()
-      .then(refresh)
-      .catch(e => setError(String(e)))
-      .finally(() => setBusy(false));
-  };
-
-  useEffect(() => {
-    refresh();
-    // Poll only the cheap calls: last frame, dropped count and the log change
-    // with every capture. Discovery is not polled — it opens and handshakes
-    // every serial port on the machine, which is not something to do on a timer.
-    const id = setInterval(() => {
-      // Device metadata is polled centrally; only the log needs a tick here.
-      ipc.getDiagnostics().then(setDiag).catch(() => {});
-    }, 2000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+function InstrumentsDialog({ onClose }: { onClose: () => void }) {
+  const { devices, busy, error, run } = useDevices();
+  // The connected device is whichever one the backend reports as online, so the
+  // UI cannot claim a connection the driver does not have.
+  const connectedId = devices.find(d => d.status === 'online')?.id ?? null;
   return (
-    <WorkspaceShell
-      canvas={
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
-          <div>
-            <div className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
-              letterSpacing: '0.14em', color: 'var(--muted)', marginBottom: 6 }}>
-              Instrument
-            </div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
-              Setup & Calibration
-            </h2>
-          </div>
-          <DeviceSelector
-            devices={devices} connectedId={connectedId} busy={busy} error={error}
-            onConnect={connect} onDisconnect={disconnect} onRescan={rescan}
-          />
-          <CalibrationPanel connected={connectedId !== null} />
-          <DeviceMetadataPanel meta={meta} />
-          <FirmwarePanel
-            target={devices.find(d => d.status === 'online') ?? devices.find(d => d.status === 'bootloader') ?? null}
-            onDone={refresh}
-          />
-          <DiagnosticsLog entries={diag} />
-        </div>
-      }
-      context={
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <h5 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Session</h5>
-          <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-            {meta
-              ? `Connected to ${meta.model} on ${meta.port}. Spectra are ${meta.pixels} pixels; the x-axis is pixel index until a wavelength calibration is fitted.`
-              : 'No instrument connected. Connect one above, or run tools/tcd1304-sim.py and enter the pty it prints.'}
-          </span>
-        </div>
-      }
-    />
+    <Modal title="Instruments" subtitle="One instrument at a time" onClose={onClose}>
+      <DeviceSelector
+        devices={devices} connectedId={connectedId} busy={busy} error={error}
+        onConnect={id => run(() => ipc.connectDevice(id))}
+        onDisconnect={() => run(() => ipc.disconnectDevice())}
+        onRescan={() => run(() => Promise.resolve())}
+      />
+    </Modal>
   );
+}
+
+function FirmwareDialog({ onClose }: { onClose: () => void }) {
+  const { devices, refresh } = useDevices();
+  const target = devices.find(d => d.status === 'online') ?? devices.find(d => d.status === 'bootloader') ?? null;
+  return (
+    <Modal title="Firmware update" onClose={onClose}>
+      <FirmwarePanel target={target} onDone={refresh} />
+    </Modal>
+  );
+}
+
+function DiagnosticsDialog({ onClose }: { onClose: () => void }) {
+  const [diag, setDiag] = useState<DiagEntry[]>([]);
+  useEffect(() => {
+    const load = () => ipc.getDiagnostics().then(setDiag).catch(() => {});
+    load();
+    const id = setInterval(load, 2000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <Modal title="Diagnostics" subtitle="Connects, device errors and late frames" width={640} onClose={onClose}>
+      <DiagnosticsLog entries={diag} />
+    </Modal>
+  );
+}
+
+function ShortcutsDialog({ onClose }: { onClose: () => void }) {
+  const rows: [string, string][] = [
+    ['Space', 'Capture (Live off)'], ['P', 'Live / freeze'], ['D', 'Take / remove dark'],
+    ['R', 'Take / remove reference'], ['⌘K / Ctrl+K', 'Command palette'], ['Esc', 'Close'],
+    ['Drag · right-drag', 'Zoom box · pan the plot'], ['Double-click', 'Fit the plot'],
+  ];
+  return (
+    <Modal title="Keyboard shortcuts" width={420} onClose={onClose}>
+      {rows.map(([k, v]) => (
+        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
+          <span>{v}</span><span className="mono" style={{ color: 'var(--muted)' }}>{k}</span>
+        </div>
+      ))}
+    </Modal>
+  );
+}
+
+/** Whichever menu-bar dialog is open. */
+export function DeviceDialogs() {
+  const { dialog, setDialog } = useUIStore();
+  const connected = useAcqStore(s => s.deviceMeta !== null);
+  const close = () => setDialog(null);
+  switch (dialog) {
+    case 'instruments': return <InstrumentsDialog onClose={close} />;
+    case 'firmware':    return <FirmwareDialog onClose={close} />;
+    case 'diagnostics': return <DiagnosticsDialog onClose={close} />;
+    case 'shortcuts':   return <ShortcutsDialog onClose={close} />;
+    case 'xcal':        return <Modal title="X-axis calibration" onClose={close}><CalibrationPanel connected={connected} /></Modal>;
+    default:            return null;
+  }
 }

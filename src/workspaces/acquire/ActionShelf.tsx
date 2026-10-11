@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAcqStore }   from '../../store/acqStore';
 import { ipc }           from '../../lib/ipc';
-import { LAMP_CONTROLS_ENABLED } from '../../lib/features';
 import { useSessionStore}from '../../store/sessionStore';
-import { Toggle }        from '../../components/design/Toggle';
 
 export function ActionShelf() {
   const { params, setParam } = useAcqStore();
@@ -84,24 +82,6 @@ export function ActionShelf() {
               background: 'var(--paper)', cursor: 'pointer', fontSize: 16 }}>+</button>
         </div>
       </div>
-
-      {/* Light source — no driver reads lightOn/lightPower and this hardware
-          has no lamp command, so the controls are hidden rather than lying. */}
-      {LAMP_CONTROLS_ENABLED && (
-        <div style={{ ...fieldStyle, flex: '1 1 200px' }}>
-          <label className="mono" style={labelStyle}>Light Source</label>
-          <div style={rowStyle}>
-            <Toggle on={params.lightOn} onChange={v => setParam('lightOn', v)} label={params.lightOn ? 'ON' : 'OFF'} />
-            <input type="range" min={0} max={100} value={params.lightPower}
-              disabled={!params.lightOn}
-              onChange={e => setParam('lightPower', Number(e.target.value))}
-              style={{ flex: 1, minWidth: 0, accentColor: 'var(--signal)', opacity: params.lightOn ? 1 : 0.4 }} />
-            <span className="mono" style={{ fontSize: 13, minWidth: 40, textAlign: 'right', flexShrink: 0 }}>
-              {params.lightPower}<small style={{ color: 'var(--muted)', marginLeft: 2, fontSize: 11 }}>%</small>
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* Sample tag */}
       <div style={fieldStyle}>

@@ -4,6 +4,8 @@ import type { Density, Layout, WorkspaceId } from '../lib/types';
 import { DEFAULT_WORKSPACE } from '../lib/features';
 
 export type Theme = 'light' | 'dark';
+/** Dialogs opened from the menu bar. One at a time. */
+export type DialogId = 'instruments' | 'firmware' | 'diagnostics' | 'xcal' | 'shortcuts';
 export type ToastKind = 'error' | 'info' | 'success';
 export interface Toast { id: string; message: string; kind: ToastKind; }
 
@@ -14,6 +16,7 @@ interface UIStore {
   cmdOpen:        boolean;
   exportOpen:     boolean;
   newSessionOpen: boolean;
+  dialog:         DialogId | null;
   toasts:         Toast[];
 
   theme:          Theme;
@@ -25,6 +28,7 @@ interface UIStore {
   setCmdOpen:        (v: boolean) => void;
   setExportOpen:     (v: boolean) => void;
   setNewSessionOpen: (v: boolean) => void;
+  setDialog:         (d: DialogId | null) => void;
   pushToast:         (message: string, kind?: ToastKind) => void;
   dismissToast:      (id: string) => void;
 }
@@ -54,6 +58,7 @@ export const useUIStore = create<UIStore>()(
     cmdOpen:        false,
     exportOpen:     false,
     newSessionOpen: false,
+    dialog:         null,
     toasts:         [],
 
     setTheme: (t) => set((s) => {
@@ -72,6 +77,7 @@ export const useUIStore = create<UIStore>()(
     setCmdOpen:        (v)  => set((s) => { s.cmdOpen = v; }),
     setExportOpen:     (v)  => set((s) => { s.exportOpen = v; }),
     setNewSessionOpen: (v)  => set((s) => { s.newSessionOpen = v; }),
+    setDialog:         (d)  => set((s) => { s.dialog = d; }),
 
     pushToast: (message, kind = 'info') => {
       const id = Math.random().toString(36).slice(2);

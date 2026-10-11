@@ -18,6 +18,8 @@ interface AcqStore {
   calHeld: { dark: boolean; reference: boolean };
   /** Scan-by-scan progress of a capture in flight; null when idle. */
   captureProgress: { done: number; total: number } | null;
+  /** The dark or reference being taken or discarded right now. */
+  calBusy: 'dark' | 'reference' | null;
 
   setParam: <K extends keyof AcqParams>(key: K, value: AcqParams[K]) => void;
   setCursor: (c: CursorState | null) => void;
@@ -30,6 +32,9 @@ interface AcqStore {
    *  Lives here so the Capture button and the Space shortcut run the same code
    *  — they used to take captures by two different routes. */
   runCapture: (tag?: string) => Promise<void>;
+  /** Take a dark or reference from the spectrum on the plot, or discard the one
+   *  held. Shared by the toolbar, the Acquire menu and the D / R shortcuts. */
+  toggleCal: (which: 'dark' | 'reference') => Promise<void>;
 }
 
 export const useAcqStore = create<AcqStore>()(
@@ -39,8 +44,6 @@ export const useAcqStore = create<AcqStore>()(
       acqMode: 'continuous',
       integration: 120,
       averaging: 4,
-      lightOn: true,
-      lightPower: 80,
       xUnit: 'nm',
       yUnit: 'au',
       lockAxes: false,
@@ -54,6 +57,7 @@ export const useAcqStore = create<AcqStore>()(
     deviceMeta:   null,
     calHeld:      { dark: false, reference: false },
     captureProgress: null,
+    calBusy:      null,
 
     setParam: (key, value) =>
       set((s) => { s.params[key] = value; }),
@@ -95,6 +99,35 @@ export const useAcqStore = create<AcqStore>()(
         // Live is off by definition here, so the stream stays stopped: the
         // captured spectrum remains on screen instead of being overwritten by
         // the next frame.
+      }
+    },
+
+    // The button is the state: with nothing stored it takes one; with a frame
+    // stored it flushes it. A dark taken at the wrong integration, or a
+    // reference against the wrong standard, is worse than none — so getting rid
+    // of one has to be one press.
+    toggleCal: async (which) => {
+      const { calBusy, calHeld, liveSpectrum, refreshInstrument } = get();
+      if (calBusy) return;
+      if (!calHeld[which] && !liveSpectrum) {
+        useUIStore.getState().pushToast('No spectrum on the plot yet.', 'info');
+        return;
+      }
+      set((s) => { s.calBusy = which; });
+      try {
+        if (calHeld[which]) {
+          await ipc.clearCalibration(which);
+        } else {
+          // Tags the spectrum already on the plot — it does not measure again.
+          // Freeze a good trace with Live, then designate it.
+          const r = await ipc.tagLastFrame(which);
+          if (r.warn) useUIStore.getState().pushToast(`${which}: ${r.warn}`, 'info');
+        }
+        await refreshInstrument();
+      } catch (e) {
+        useUIStore.getState().pushToast(String(e), 'error');
+      } finally {
+        set((s) => { s.calBusy = null; });
       }
     },
 

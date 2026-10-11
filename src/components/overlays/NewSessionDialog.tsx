@@ -42,15 +42,15 @@ export function NewSessionDialog() {
         overflow: 'hidden',
       }}>
         <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)' }}>
-          <h4 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em' }}>New Session</h4>
+          <h4 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em' }}>New Workspace</h4>
           <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
-            Creates a new acquisition session
+            Spectra you capture are filed in it
           </span>
         </div>
 
         <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {[
-            { label: 'Session name', content: (
+            { label: 'Workspace name', content: (
               <input autoFocus value={name} onChange={e => setName(e.target.value)}
                 placeholder="e.g. Maize Leaf — Run 5"
                 style={{ height: 36, padding: '0 10px', width: '100%',
@@ -83,7 +83,7 @@ export function NewSessionDialog() {
             )},
             { label: 'Operator (optional)', content: (
               <input value={operator} onChange={e => setOperator(e.target.value)}
-                placeholder="who is running this session"
+                placeholder="who is running this workspace"
                 style={{ height: 36, padding: '0 10px', width: '100%',
                   border: '1px solid var(--line)', borderRadius: 8,
                   background: 'var(--paper)', color: 'var(--ink)',
@@ -102,7 +102,7 @@ export function NewSessionDialog() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10,
           padding: '14px 18px', borderTop: '1px solid var(--line)', background: 'var(--bg)' }}>
           <Button variant="ghost" onClick={() => setNewSessionOpen(false)}>Cancel</Button>
-          <Button variant="primary" onClick={create} disabled={!name.trim()}>Create session</Button>
+          <Button variant="primary" onClick={create} disabled={!name.trim()}>Create workspace</Button>
         </div>
       </div>
     </div>

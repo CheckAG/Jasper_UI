@@ -8,8 +8,6 @@ pub struct AcqParams {
     pub acq_mode:    String,
     pub integration: u32,     // ms
     pub averaging:   u32,
-    pub light_on:    bool,
-    pub light_power: f32,
     pub x_unit:      String,
     pub y_unit:      String,
     pub lock_axes:   bool,
@@ -23,8 +21,6 @@ impl Default for AcqParams {
             acq_mode:    "continuous".into(),
             integration: 120,
             averaging:   4,
-            light_on:    true,
-            light_power: 80.0,
             x_unit:      "nm".into(),
             y_unit:      "au".into(),
             lock_axes:   false,
