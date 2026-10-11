@@ -12,7 +12,7 @@ interface CmdItem {
 
 export function CommandPalette() {
   const [query, setQuery] = useState('');
-  const { setCmdOpen, setWorkspace, setExportOpen, setNewSessionOpen } = useUIStore();
+  const { setCmdOpen, setWorkspace, setExportOpen, setNewSessionOpen, theme, setTheme } = useUIStore();
   const { sessions, setActiveSession } = useSessionStore();
 
   function close() { setCmdOpen(false); setQuery(''); }
@@ -30,6 +30,8 @@ export function CommandPalette() {
       action: () => { setNewSessionOpen(true); close(); } },
     { group: 'Action', label: 'Export data', meta: '',
       action: () => { setExportOpen(true); close(); } },
+    { group: 'View', label: theme === 'dark' ? 'Light theme' : 'Dark theme', meta: '',
+      action: () => { setTheme(theme === 'dark' ? 'light' : 'dark'); close(); } },
   ];
 
   const filtered = query.trim()

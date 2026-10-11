@@ -22,7 +22,6 @@ export function AcquireWorkspace() {
           <LiveSpectrum
             params={params}
             captures={overlay}
-            theme="light"
             liveSpectrum={liveSpectrum}
             onCursor={setCursor}
             paused={paused}

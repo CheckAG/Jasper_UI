@@ -136,7 +136,7 @@ export function ActionShelf() {
           {busyCapture && (
             <span aria-hidden style={{
               position: 'absolute', inset: 0, transformOrigin: 'left',
-              transform: `scaleX(${pct})`, background: 'rgba(255,255,255,0.18)',
+              transform: `scaleX(${pct})`, background: 'rgba(var(--paper-rgb),0.18)',
               transition: 'transform 120ms linear', pointerEvents: 'none',
             }} />
           )}
@@ -148,7 +148,7 @@ export function ActionShelf() {
               flexShrink: 0 }} />
             {busyCapture ? `Capturing ${progress?.done ?? 0}/${progress?.total ?? 0}` : 'Capture'}
             <span className="mono" style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 6px',
-              borderRadius: 4, background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)' }}>
+              borderRadius: 4, background: 'rgba(var(--paper-rgb),0.12)', color: 'rgba(var(--paper-rgb),0.8)' }}>
               Space
             </span>
           </span>

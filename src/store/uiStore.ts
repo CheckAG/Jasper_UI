@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import type { Density, Layout, WorkspaceId } from '../lib/types';
 import { DEFAULT_WORKSPACE } from '../lib/features';
 
+export type Theme = 'light' | 'dark';
 export type ToastKind = 'error' | 'info' | 'success';
 export interface Toast { id: string; message: string; kind: ToastKind; }
 
@@ -15,9 +16,9 @@ interface UIStore {
   newSessionOpen: boolean;
   toasts:         Toast[];
 
-  // theme is permanently 'light'
-  readonly theme: 'light';
+  theme:          Theme;
 
+  setTheme:          (t: Theme) => void;
   setDensity:        (d: Density) => void;
   setLayout:         (l: Layout) => void;
   setWorkspace:      (ws: WorkspaceId) => void;
@@ -32,9 +33,21 @@ function applyDensity(density: Density) {
   document.documentElement.setAttribute('data-density', density);
 }
 
+const THEME_KEY = 'jasper.theme';
+
+/** The theme is a per-machine display preference, so localStorage is enough. */
+function storedTheme(): Theme {
+  try { return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'; }
+  catch { return 'light'; }
+}
+
+export function applyTheme(theme: Theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+}
+
 export const useUIStore = create<UIStore>()(
   immer((set) => ({
-    theme:          'light',
+    theme:          storedTheme(),
     density:        'standard',
     layout:         'standard',
     activeWs:       DEFAULT_WORKSPACE,
@@ -42,6 +55,12 @@ export const useUIStore = create<UIStore>()(
     exportOpen:     false,
     newSessionOpen: false,
     toasts:         [],
+
+    setTheme: (t) => set((s) => {
+      s.theme = t;
+      applyTheme(t);
+      try { localStorage.setItem(THEME_KEY, t); } catch { /* private mode: still applies */ }
+    }),
 
     setDensity: (d) => set((s) => {
       s.density = d;

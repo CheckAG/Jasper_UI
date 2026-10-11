@@ -1,5 +1,4 @@
-/* Force light-only rendering — no system dark mode inheritance */
-:root { color-scheme: light; }
+/* color-scheme comes from tokens.css per theme — never from the OS setting */
 
 *, *::before, *::after { box-sizing: border-box; }
 
