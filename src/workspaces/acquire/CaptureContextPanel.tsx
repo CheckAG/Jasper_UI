@@ -1,16 +1,28 @@
 import { useSessionStore } from '../../store/sessionStore';
+import { useUIStore }      from '../../store/uiStore';
 import { ipc }             from '../../lib/ipc';
 
 export function CaptureContextPanel() {
   const { captures, selectedIds, removeCapture, toggleSelected } = useSessionStore();
+  const setExportOpen = useUIStore(s => s.setExportOpen);
 
   return (
     <>
       {/* Captures */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <h5 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 600 }}>
-          Captures ({captures.length})
-        </h5>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 4px' }}>
+          <h5 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
+            Captures ({captures.length})
+          </h5>
+          <button onClick={() => setExportOpen(true)} disabled={captures.length === 0}
+            title={captures.length ? 'Export this session\'s captures' : 'No captures to export'}
+            style={{ padding: '3px 10px', border: '1px solid var(--line)', borderRadius: 6,
+              background: 'var(--paper)', color: 'var(--ink-2)', fontFamily: 'var(--font-sans)',
+              fontSize: 12, cursor: captures.length ? 'pointer' : 'not-allowed',
+              opacity: captures.length ? 1 : 0.5 }}>
+            Export
+          </button>
+        </div>
         {captures.length === 0 && (
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>
             Press <kbd className="mono" style={{ fontSize: 11, padding: '1px 5px', borderRadius: 4,

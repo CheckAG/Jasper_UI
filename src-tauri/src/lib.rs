@@ -8,7 +8,7 @@ use state::AppState;
 use commands::instrument::*;
 use commands::storage::*;
 use commands::sidecar::cmd_sidecar_request;
-use commands::export::cmd_save_export;
+use commands::export::{cmd_save_export, cmd_save_xlsx};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -66,6 +66,7 @@ pub fn run() {
             cmd_sidecar_request,
             // Export
             cmd_save_export,
+            cmd_save_xlsx,
         ])
         .run(tauri::generate_context!())
         .expect("error while running JASPER");

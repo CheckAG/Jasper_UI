@@ -3,11 +3,12 @@ import { useUIStore }      from '../../store/uiStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useAnalyzeStore } from '../../store/analyzeStore';
 import { ipc }             from '../../lib/ipc';
-import { buildExport }     from '../../lib/exporters';
+import { buildExport, exportXlsx } from '../../lib/exporters';
 import { Button }          from '../design/Button';
 import type { ExportFormat } from '../../lib/types';
 
 const FORMATS: Array<{ id: ExportFormat; name: string; ext: string; desc: string }> = [
+  { id: 'xlsx',        name: 'Excel',     ext: '.xlsx',desc: 'Wavelength + one column per capture, with a metadata sheet' },
   { id: 'jcamp-dx',    name: 'JCAMP-DX',  ext: '.dx',  desc: 'IUPAC standard, round-trip lossless with method sidecar' },
   { id: 'csv-xy',      name: 'CSV (x/y)', ext: '.csv', desc: 'Wavelength + intensity column per capture' },
   { id: 'csv-matrix',  name: 'CSV matrix',ext: '.csv', desc: 'Samples × wavelengths matrix format' },
@@ -24,7 +25,7 @@ export function ExportDialog() {
   const [error, setError] = useState<string | null>(null);
 
   const { setExportOpen } = useUIStore();
-  const { activeId, captures, activeSession } = useSessionStore();
+  const { activeId, captures, selectedIds, activeSession } = useSessionStore();
   const pipelineNodes = useAnalyzeStore(s => s.pipeline);
 
   async function doExport() {
@@ -32,17 +33,21 @@ export function ExportDialog() {
     setError(null);
     try {
       const session = activeSession();
-      const caps = selected ? captures.slice(-1) : captures;  // (selection UI is future work)
+      const caps = selected ? captures.filter(c => selectedIds.includes(c.id)) : captures;
       if (caps.length === 0) { setError('No captures to export'); setExporting(false); return; }
 
-      const { filename, content } = await buildExport(
-        format,
-        session?.name ?? 'jasper',
-        caps,
-        pipeline ? pipelineNodes : undefined,
-      );
-
-      const path = await ipc.saveExport(filename, content);
+      let path: string | null;
+      if (format === 'xlsx') {
+        path = await exportXlsx(session, caps);
+      } else {
+        const { filename, content } = await buildExport(
+          format,
+          session?.name ?? 'jasper',
+          caps,
+          pipeline ? pipelineNodes : undefined,
+        );
+        path = await ipc.saveExport(filename, content);
+      }
       if (path) {
         setResult(path);
         await ipc.saveAudit({
