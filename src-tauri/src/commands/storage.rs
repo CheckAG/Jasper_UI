@@ -1,6 +1,5 @@
 use tauri::State;
 use crate::state::AppState;
-use serde::Serialize;
 use crate::storage::db::{
     self, SessionRow, CaptureRow, AuditRow,
 };
@@ -39,32 +38,6 @@ pub fn cmd_delete_session(
 }
 
 // ── Captures ──────────────────────────────────────────────────────────────────
-
-#[derive(Serialize)]
-pub struct SavedCapture {
-    /// The .jdx written for the capture, or None when writing it failed.
-    file:       Option<String>,
-    file_error: Option<String>,
-}
-
-/// Saves the capture twice: a database row, then a .jdx file in its workspace
-/// folder. A failed file write never loses the capture — the row is already in.
-#[tauri::command]
-pub fn cmd_save_capture(
-    state: State<'_, AppState>,
-    capture: CaptureRow,
-) -> Result<SavedCapture, String> {
-    let conn = open(&state)?;
-    db::insert_capture(&conn, &capture).map_err(|e| e.to_string())?;
-    match files::write_capture(&conn, &state.spectra_root, &capture) {
-        Ok(path) => {
-            let path = path.to_string_lossy().to_string();
-            db::set_capture_file(&conn, &capture.id, &path).map_err(|e| e.to_string())?;
-            Ok(SavedCapture { file: Some(path), file_error: None })
-        }
-        Err(e) => Ok(SavedCapture { file: None, file_error: Some(e) }),
-    }
-}
 
 /// The folder a workspace's .jdx files go in (it may not exist yet).
 #[tauri::command]

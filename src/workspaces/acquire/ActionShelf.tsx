@@ -1,26 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useAcqStore }   from '../../store/acqStore';
-import { ipc }           from '../../lib/ipc';
 import { useSessionStore}from '../../store/sessionStore';
 
 export function ActionShelf() {
-  const { params, setParam } = useAcqStore();
+  const params = useAcqStore(s => s.params);
   const captures = useSessionStore(s => s.captures);
   const tagRef = useRef('');
 
-  // Integration bounds come from the device, not from a guess. The old 5-500 ms
-  // range let the slider ask for values this hardware rejects (its floor is the
-  // 7.4 ms it takes to clock 3694 pixels out), so the control moved and the
-  // device quietly did something else.
-  const [range, setRange] = useState({ min: 8, max: 10_000 });
-  useEffect(() => {
-    ipc.getDeviceMetadata()
-      .then(m => { if (m) setRange({ min: m.integMinMs, max: m.integMaxMs }); })
-      .catch(() => {});
-  }, []);
+  const deviceMeta = useAcqStore(s => s.deviceMeta);
+  const writeSetting = useAcqStore(s => s.writeSetting);
+  // Integration bounds come from the device, not from a guess: its floor is the
+  // 7.4 ms it takes to clock 3694 pixels out. The backend enforces them too.
+  const range = deviceMeta ? { min: deviceMeta.integMinMs, max: deviceMeta.integMaxMs } : { min: 8, max: 10_000 };
 
   const paused = useAcqStore(s => s.paused);
-  const deviceMeta = useAcqStore(s => s.deviceMeta);
 
   const progress = useAcqStore(s => s.captureProgress);
   const runCapture = useAcqStore(s => s.runCapture);
@@ -57,7 +50,7 @@ export function ActionShelf() {
             onBlur={e => {
               const v = Math.round(Number(e.target.value));
               const clamped = Number.isFinite(v) ? Math.min(Math.max(v, range.min), range.max) : params.integration;
-              if (clamped !== params.integration) setParam('integration', clamped);
+              if (clamped !== params.integration) writeSetting('integration', clamped);
               else e.target.value = String(params.integration);
             }}
             onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
@@ -73,11 +66,11 @@ export function ActionShelf() {
       <div style={{ ...fieldStyle, flex: '0 1 130px' }}>
         <label className="mono" style={labelStyle}>Averaging</label>
         <div style={{ ...rowStyle, gap: 6 }}>
-          <button onClick={() => setParam('averaging', Math.max(1, params.averaging - 1))}
+          <button onClick={() => writeSetting('averaging', Math.max(1, params.averaging - 1))}
             style={{ width: 28, height: 28, flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
               background: 'var(--paper)', cursor: 'pointer', fontSize: 16 }}>−</button>
           <span className="mono" style={{ flex: 1, textAlign: 'center', fontSize: 14 }}>{params.averaging}</span>
-          <button onClick={() => setParam('averaging', Math.min(64, params.averaging + 1))}
+          <button onClick={() => writeSetting('averaging', Math.min(64, params.averaging + 1))}
             style={{ width: 28, height: 28, flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
               background: 'var(--paper)', cursor: 'pointer', fontSize: 16 }}>+</button>
         </div>

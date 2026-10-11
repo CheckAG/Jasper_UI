@@ -2,11 +2,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{AppHandle, State, Emitter};
 use crate::state::AppState;
-use crate::instrument::driver::{AcqParams, DeviceInfo, CalResult, XCalResult, SpectrumDriver};
-use crate::instrument::process::{self, CalFrame};
-
-/// Scans averaged into a stored dark/reference frame.
-const CAL_SCANS: usize = 4;
+use crate::instrument::driver::XCalResult;
+use crate::api::{self, Caller, Request};
+#[cfg(test)]
+use crate::api::STALE_FRAME_MS;
 
 /// Run driver work on a blocking thread. A real (or simulated) device holds
 /// the driver mutex for a full integration period per scan, so commands that
@@ -19,61 +18,27 @@ where
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
-// ── Device management ─────────────────────────────────────────────────────────
-
-/// Every instrument the host can see.
-///
-/// Ports are probed with the protocol handshake — nothing is listed that did not
-/// answer as a TCD1304, so this returns an empty list when no hardware is
-/// attached rather than placeholders.
+/// The GUI's way into the Device API. Everything the GUI does to the
+/// instrument — connect, settings, live, dark/reference, capture — goes
+/// through here, the same dispatcher scripts and agents will use.
 #[tauri::command]
-pub async fn cmd_discover_devices(
-    state: State<'_, AppState>,
-) -> Result<Vec<DeviceInfo>, String> {
-    let driver = Arc::clone(&state.driver);
-    run_blocking(move || {
-        // The connected device comes from the live driver, which knows its own
-        // identity without reopening anything. Everything else is found by
-        // probing — including when the session started with no hardware, so a
-        // board plugged in later is still reachable.
-        let mine = driver.lock().map_err(|e| e.to_string())?.device_list();
-        let connected: Option<String> = mine.first().map(|d| d.id.clone());
-        let mut all = mine;
-        all.extend(crate::instrument::tcd1304::discover(connected.as_deref()));
-        Ok(all)
+pub async fn cmd_api(
+    app: AppHandle,
+    request: serde_json::Value,
+) -> Result<serde_json::Value, api::ApiError> {
+    let request: Request = serde_json::from_value(request)
+        .map_err(|e| api::ApiError { code: 4011, message: "INVALID_VALUE", detail: e.to_string(), data: serde_json::Value::Null })?;
+    let events: Arc<dyn api::Events> = Arc::new(app.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Manager;
+        let state = app.state::<AppState>();
+        api::dispatch(&state, events, Caller::Gui, request)
     })
     .await
+    .map_err(|e| api::ApiError { code: 5000, message: "INTERNAL", detail: e.to_string(), data: serde_json::Value::Null })?
 }
 
-/// Connect to a device by port path.
-///
-/// Swaps the live driver, so a session that started with no hardware can pick
-/// up a board plugged in later — and so a port typed in by hand works exactly
-/// like a discovered one.
-#[tauri::command]
-pub async fn cmd_connect_device(
-    state: State<'_, AppState>,
-    device_id: String,
-) -> Result<(), String> {
-    state.stop_acquisition();
-    let driver = Arc::clone(&state.driver);
-    run_blocking(move || connect_port(&driver, &device_id)).await
-}
-
-type DriverSlot = std::sync::Mutex<Box<dyn SpectrumDriver + Send>>;
-
-fn connect_port(driver: &DriverSlot, device_id: &str) -> Result<(), String> {
-    let mut slot = driver.lock().map_err(|e| e.to_string())?;
-    slot.disconnect();
-
-    let mut next: Box<dyn SpectrumDriver + Send> =
-        Box::new(crate::instrument::tcd1304::Tcd1304Driver::new(device_id.to_string()));
-    // Handshake before adopting it: a failed connect must leave the previous
-    // driver in place rather than swapping in one that cannot talk.
-    next.connect(device_id)?;
-    *slot = next;
-    Ok(())
-}
+// ── Firmware ──────────────────────────────────────────────────────────────────
 
 /// Install a firmware image (S-record text) on the board at `device_id`, then
 /// reconnect to it. Returns the firmware version the board now reports.
@@ -100,173 +65,13 @@ pub async fn cmd_update_firmware(
                 "stage": stage, "done": done, "total": total,
             }));
         })?;
-        connect_port(&driver, &port)?;
+        crate::api::connect_port(&driver, &port)?;
         Ok(firmware)
     })
     .await
 }
 
-/// Which calibrations are currently held, so the UI can show whether a dark or
-/// a reference has actually been taken rather than tracking its own guess.
-#[derive(serde::Serialize)]
-pub struct CalibrationState {
-    pub dark:      bool,
-    pub reference: bool,
-}
-
-#[tauri::command]
-pub async fn cmd_get_calibration_state(
-    state: State<'_, AppState>,
-) -> Result<CalibrationState, String> {
-    let calibration = Arc::clone(&state.calibration);
-    run_blocking(move || {
-        let cal = calibration.lock().map_err(|e| e.to_string())?;
-        Ok(CalibrationState { dark: cal.dark.is_some(), reference: cal.reference.is_some() })
-    })
-    .await
-}
-
-/// Store the frame currently on the plot as the dark or the reference.
-///
-/// Tags what has already been measured rather than going and measuring again:
-/// freeze a good trace with Live, then designate it. It also means the
-/// calibration inherits whatever Averaging produced that frame, instead of a
-/// fixed scan count that ignores the setting.
-#[tauri::command]
-pub async fn cmd_tag_last_frame(
-    state: State<'_, AppState>,
-    which: String,
-) -> Result<CalResult, String> {
-    let last_raw = Arc::clone(&state.last_raw);
-    let calibration = Arc::clone(&state.calibration);
-    run_blocking(move || {
-        let frame = {
-            let slot = last_raw.lock().map_err(|e| e.to_string())?;
-            match slot.as_ref() {
-                Some(f) => CalFrame { ys: f.ys.clone(), integration_ms: f.integration_ms },
-                None => return Err("No spectrum on the plot yet — start the stream first.".into()),
-            }
-        };
-
-        // The same sanity checks the measured path applies, on the same data.
-        let mean = frame.ys.iter().sum::<f32>() / frame.ys.len().max(1) as f32;
-        let max = frame.ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        let warn = match which.as_str() {
-            "dark" if mean > 5000.0 =>
-                Some(format!("dark level high ({mean:.0} counts) — is the light off?")),
-            "reference" if max >= 55_000.0 =>
-                Some("reference is near saturation — reduce integration".to_string()),
-            _ => None,
-        };
-
-        let mut cal = calibration.lock().map_err(|e| e.to_string())?;
-        match which.as_str() {
-            "dark"      => cal.dark = Some(frame),
-            "reference" => cal.reference = Some(frame),
-            other       => return Err(format!("unknown calibration {other:?}")),
-        }
-        Ok(CalResult { status: "ok".into(), rms: None, warn })
-    })
-    .await
-}
-
-/// Discard a stored calibration frame. `which` is "dark", "reference" or "all".
-///
-/// Measurements are only as good as the calibration behind them, so removing one
-/// has to be possible without restarting: a dark taken at the wrong integration
-/// time, or a reference taken against the wrong standard, is worse than none.
-#[tauri::command]
-pub async fn cmd_clear_calibration(
-    state: State<'_, AppState>,
-    which: String,
-) -> Result<(), String> {
-    let calibration = Arc::clone(&state.calibration);
-    run_blocking(move || {
-        let mut cal = calibration.lock().map_err(|e| e.to_string())?;
-        match which.as_str() {
-            "dark"      => cal.dark = None,
-            "reference" => cal.reference = None,
-            "all"       => { cal.dark = None; cal.reference = None; }
-            other       => return Err(format!("unknown calibration {other:?}")),
-        }
-        Ok(())
-    })
-    .await
-}
-
-/// Recent instrument events. Empty until something has happened.
-#[tauri::command]
-pub async fn cmd_get_diagnostics(
-    state: State<'_, AppState>,
-) -> Result<Vec<crate::instrument::driver::DiagEntry>, String> {
-    let driver = Arc::clone(&state.driver);
-    run_blocking(move || {
-        Ok(driver.lock().map_err(|e| e.to_string())?.diagnostics())
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn cmd_disconnect_device(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    state.stop_acquisition();
-    let driver = Arc::clone(&state.driver);
-    run_blocking(move || {
-        driver.lock().map_err(|e| e.to_string())?.disconnect();
-        Ok(())
-    })
-    .await
-}
-
-/// Identity and limits of the connected instrument.
-///
-/// Returns `None` when nothing is connected, or when the driver has nothing to
-/// report — the panel shows an empty state rather than zeros that look like
-/// readings.
-#[tauri::command]
-pub async fn cmd_get_device_metadata(
-    state: State<'_, AppState>,
-) -> Result<Option<crate::instrument::driver::DeviceMetadata>, String> {
-    let driver = Arc::clone(&state.driver);
-    run_blocking(move || {
-        Ok(driver.lock().map_err(|e| e.to_string())?.device_metadata())
-    })
-    .await
-}
-
-// ── Single scan ───────────────────────────────────────────────────────────────
-
-#[tauri::command]
-pub async fn cmd_scan(
-    state: State<'_, AppState>,
-    params: AcqParams,
-) -> Result<crate::instrument::driver::SpectrumFrame, String> {
-    let driver = Arc::clone(&state.driver);
-    let calibration = Arc::clone(&state.calibration);
-    run_blocking(move || {
-        let frame = {
-            let driver = driver.lock().map_err(|e| e.to_string())?;
-            // average_scans with n = 1 is a single scan, so this covers both.
-            process::average_scans(driver.as_ref(), &params, params.averaging.max(1) as usize)?
-        };
-        let cal = calibration.lock().map_err(|e| e.to_string())?;
-        Ok(process::process(frame, &cal))
-    })
-    .await
-}
-
-/// How long to honour the backpressure gate before assuming the frontend is
-/// never going to report back. Long enough that a slow render is respected,
-/// short enough that a dead renderer does not freeze the stream.
-const STALE_FRAME_MS: u64 = 1_000;
-
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
+// ── Live-stream backpressure ──────────────────────────────────────────────────
 
 /// Called by the frontend once a streamed frame has been rendered, so the
 /// acquisition loop may produce the next one.
@@ -276,257 +81,7 @@ pub fn cmd_frame_consumed(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
-/// Take one deliberate measurement: `params.averaging` scans, meaned.
-///
-/// Capture used to snapshot whatever frame the live stream had last produced,
-/// which was instantaneous and showed nothing. A capture is the thing that ends
-/// up in the session, so it is worth taking on purpose — and at 32 averages of
-/// 200 ms that is over a minute, which the operator needs to see progressing.
-///
-/// Emits "capture-progress" as `{done, total}` after each scan. The live stream
-/// is stopped first: the device can only do one thing at a time, and a capture
-/// competing with the stream for the driver mutex would just be slower.
-#[tauri::command]
-pub async fn cmd_capture(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    params: AcqParams,
-) -> Result<crate::instrument::driver::SpectrumFrame, String> {
-    state.stop_acquisition();
-    let driver = Arc::clone(&state.driver);
-    let calibration = Arc::clone(&state.calibration);
-    let last_raw = Arc::clone(&state.last_raw);
-
-    run_blocking(move || {
-        let total = params.averaging.max(1) as usize;
-        let frame = {
-            let driver = driver.lock().map_err(|e| e.to_string())?;
-            if !driver.is_connected() {
-                return Err(crate::instrument::tcd1304::NOT_CONNECTED.to_string());
-            }
-            process::average_scans_with(driver.as_ref(), &params, total, |done, total| {
-                let _ = app.emit("capture-progress", serde_json::json!({
-                    "done": done, "total": total,
-                }));
-            })?
-        };
-
-        // A capture is as taggable as any streamed frame, so it becomes the
-        // candidate for dark/reference too.
-        if let Ok(mut slot) = last_raw.lock() {
-            *slot = Some(CalFrame { ys: frame.ys.clone(), integration_ms: frame.integration_ms });
-        }
-
-        let cal = calibration.lock().map_err(|e| e.to_string())?;
-        Ok(process::process(frame, &cal))
-    })
-    .await
-}
-
-// ── Continuous acquisition ────────────────────────────────────────────────────
-
-/// Starts a background thread that emits "spectrum-frame" events continuously.
-/// Stopping the previous acquisition (if any) happens automatically.
-///
-/// Every frame comes from `driver.scan()` through the SpectrumDriver trait, so
-/// the loop is independent of which device is connected.
-#[tauri::command]
-pub fn cmd_start_acquisition(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    params: AcqParams,
-) -> Result<(), String> {
-    // Claim a fresh generation; any previously running thread now sees a
-    // mismatch on its next iteration and exits. No shared bool to race on.
-    let my_gen = state.acq_generation.fetch_add(1, Ordering::SeqCst) + 1;
-    let generation = Arc::clone(&state.acq_generation);
-    let driver = Arc::clone(&state.driver);
-    let calibration = Arc::clone(&state.calibration);
-
-    let in_flight = Arc::clone(&state.frame_in_flight);
-    let last_raw = Arc::clone(&state.last_raw);
-
-    // A capture costs about 2x the integration time: the firmware discards the
-    // in-progress frame and sends the next one. Pacing on 1x asks for frames
-    // faster than the device can produce them, so the loop spends its time
-    // blocked inside scan() while holding the driver mutex.
-    let interval_ms = (2 * params.integration * params.averaging.max(1)).max(16) as u64;
-
-    std::thread::spawn(move || {
-        while generation.load(Ordering::SeqCst) == my_gen {
-            let started = std::time::Instant::now();
-
-            // Backpressure. Each frame is 3694 points; at short integration
-            // times the webview cannot render them as fast as the device can
-            // produce them, and every extra frame queued makes the displayed
-            // trace older. Skip the capture entirely rather than emitting into
-            // a queue nobody is draining — showing the newest data beats
-            // showing all of it, late.
-            //
-            // The gate opens again when the frontend calls `cmd_frame_consumed`,
-            // or after STALE_FRAME_MS if it never does — a renderer that dies
-            // mid-frame must not stop the stream forever.
-            let waiting_since = in_flight.load(Ordering::SeqCst);
-            if waiting_since != 0 && now_ms().saturating_sub(waiting_since) < STALE_FRAME_MS {
-                std::thread::sleep(std::time::Duration::from_millis(5));
-                continue;
-            }
-
-            let frame = {
-                let drv = match driver.lock() {
-                    Ok(d) => d,
-                    Err(_) => break,
-                };
-                // Averaging is host-side: the device has no AVG command, so N
-                // captures are taken and meaned here. Previously the stream
-                // ignored params.averaging entirely — the control restarted the
-                // stream and changed nothing about the data.
-                match process::average_scans(drv.as_ref(), &params, params.averaging.max(1) as usize) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        eprintln!("acquisition scan error, stopping stream: {e}");
-                        break;
-                    }
-                }
-            };
-
-            // Keep the frame as the device gave it, before any dark/reference
-            // maths, so it can be tagged as a calibration later.
-            if let Ok(mut slot) = last_raw.lock() {
-                *slot = Some(CalFrame { ys: frame.ys.clone(), integration_ms: frame.integration_ms });
-            }
-
-            // Raw counts → requested mode (dark/reference math, host-side)
-            let frame = match calibration.lock() {
-                Ok(cal) => process::process(frame, &cal),
-                Err(_) => break,
-            };
-
-            // Re-check generation right before emitting so a just-retired thread
-            // can't push a stale-mode frame.
-            if generation.load(Ordering::SeqCst) != my_gen {
-                break;
-            }
-            in_flight.store(now_ms(), Ordering::SeqCst);
-            if let Err(e) = app.emit("spectrum-frame", &frame) {
-                eprintln!("emit spectrum-frame error: {e}");
-                in_flight.store(0, Ordering::SeqCst);
-            }
-
-            // A real device blocks in scan() for the capture itself, so only
-            // sleep the remainder of the frame interval — but always leave a
-            // minimum gap, or this loop holds the driver mutex essentially
-            // 100% of the time and starves every other command (metadata,
-            // connect, calibration).
-            let elapsed_ms = started.elapsed().as_millis() as u64;
-            let gap_ms = interval_ms.saturating_sub(elapsed_ms).max(15);
-            std::thread::sleep(std::time::Duration::from_millis(gap_ms));
-        }
-    });
-
-    Ok(())
-}
-
-#[tauri::command]
-pub fn cmd_stop_acquisition(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    state.stop_acquisition();
-    Ok(())
-}
-
-// ── Calibration ───────────────────────────────────────────────────────────────
-
-/// Capture CAL_SCANS averaged frames and store as the dark frame.
-/// Pauses the stream first so calibration doesn't fight it for the driver;
-/// the frontend restarts acquisition when the calibration completes.
-/// The quality warning only applies to raw-counts sources; mock-styled
-/// frames are stored too but never used by process().
-#[tauri::command]
-pub async fn cmd_calibrate_dark(
-    state: State<'_, AppState>,
-    params: AcqParams,
-) -> Result<CalResult, String> {
-    state.stop_acquisition();
-    let driver = Arc::clone(&state.driver);
-    let calibration = Arc::clone(&state.calibration);
-    run_blocking(move || {
-        {
-            let d = driver.lock().map_err(|e| e.to_string())?;
-            if !d.is_connected() {
-                return Err(crate::instrument::tcd1304::NOT_CONNECTED.to_string());
-            }
-        }
-
-        let avg = {
-            let driver = driver.lock().map_err(|e| e.to_string())?;
-            driver.calibrate_dark(&params)?; // device-specific hook
-            process::average_scans(driver.as_ref(), &params, CAL_SCANS)?
-        };
-
-        let mut warn = None;
-        if avg.units == "counts" {
-            let mean = avg.ys.iter().sum::<f32>() / avg.ys.len().max(1) as f32;
-            if mean > 5000.0 {
-                warn = Some(format!("dark level high ({mean:.0} counts) — is the light off?"));
-            }
-        }
-
-        let mut cal = calibration.lock().map_err(|e| e.to_string())?;
-        cal.dark = Some(CalFrame { ys: avg.ys, integration_ms: params.integration });
-        Ok(CalResult { status: "ok".into(), rms: None, warn })
-    })
-    .await
-}
-
-/// Capture CAL_SCANS averaged frames and store as the reference frame.
-/// Same stream-pause contract as cmd_calibrate_dark.
-#[tauri::command]
-pub async fn cmd_calibrate_reference(
-    state: State<'_, AppState>,
-    params: AcqParams,
-) -> Result<CalResult, String> {
-    state.stop_acquisition();
-    let driver = Arc::clone(&state.driver);
-    let calibration = Arc::clone(&state.calibration);
-    run_blocking(move || {
-        {
-            let d = driver.lock().map_err(|e| e.to_string())?;
-            if !d.is_connected() {
-                return Err(crate::instrument::tcd1304::NOT_CONNECTED.to_string());
-            }
-        }
-
-        let avg = {
-            let driver = driver.lock().map_err(|e| e.to_string())?;
-            driver.calibrate_reference(&params)?;
-            process::average_scans(driver.as_ref(), &params, CAL_SCANS)?
-        };
-
-        let mut cal = calibration.lock().map_err(|e| e.to_string())?;
-
-        let mut warn = None;
-        if avg.units == "counts" {
-            let max = avg.ys.iter().cloned().fold(f32::MIN, f32::max);
-            let dark_mean = cal
-                .dark
-                .as_ref()
-                .filter(|d| d.ys.len() == avg.ys.len())
-                .map(|d| d.ys.iter().sum::<f32>() / d.ys.len().max(1) as f32);
-            if max >= 55_000.0 {
-                warn = Some("reference near saturation — reduce integration".into());
-            } else if let Some(dm) = dark_mean {
-                if max - dm < 500.0 {
-                    warn = Some("reference signal low — check the light path".into());
-                }
-            }
-        }
-
-        cal.reference = Some(CalFrame { ys: avg.ys, integration_ms: params.integration });
-        Ok(CalResult { status: "ok".into(), rms: None, warn })
-    })
-    .await
-}
+// ── Wavelength calibration (not implemented on this device yet, #7) ───────────
 
 #[tauri::command]
 pub async fn cmd_calibrate_xcal(

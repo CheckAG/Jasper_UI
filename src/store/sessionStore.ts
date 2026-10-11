@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { Session, Capture, AcqParams } from '../lib/types';
+import type { Session, Capture } from '../lib/types';
 import { ipc } from '../lib/ipc';
 import { toast } from './uiStore';
 
@@ -26,7 +26,10 @@ interface SessionStore {
 
   activeSession:    () => Session | undefined;
   setActiveSession: (id: string) => Promise<void>;
-  addCapture:       (params: AcqParams, xs: Float32Array, ys: Float32Array, tag: string) => void;
+  /** id, label and colour for the next capture in the active workspace. */
+  nextCapture:      () => { id: string; label: string; color: string };
+  /** Show a capture the backend has saved. */
+  addSavedCapture:  (cap: Capture) => void;
   removeCapture:    (id: string) => void;
   toggleSelected:   (id: string) => void;
   clearSelected:    () => void;
@@ -116,36 +119,22 @@ export const useSessionStore = create<SessionStore>()(
       }
     },
 
-    addCapture: (params, xs, ys, tag) => {
-      // A capture belongs to a session. With none selected there is nowhere to
-      // file it, so it is dropped rather than orphaned in the database.
-      const sessionId = get().activeId;
-      if (!sessionId) return;
-      const cap: Capture = {
-        id:        makeId(),
-        sessionId,
-        label:     `Capture · #${String(get().captures.length + 1).padStart(2, '0')}`,
-        timestamp: Date.now(),
-        tag,
-        params,
-        xs,
-        ys,
-        color: PALETTE[get().captures.length % PALETTE.length],
+    nextCapture: () => {
+      const n = get().captures.length;
+      return {
+        id:    makeId(),
+        label: `Capture · #${String(n + 1).padStart(2, '0')}`,
+        color: PALETTE[n % PALETTE.length],
       };
-      set((s) => {
-        s.captures.push(cap);
-        const session = s.sessions.find(ss => ss.id === cap.sessionId);
-        if (session) session.captureCount += 1;
-      });
-      // Persist; on failure the capture is only in memory → tell the user
-      ipc.saveCapture(cap).then(({ file, fileError }) => {
-        if (fileError) toast(`"${cap.tag || cap.label}" is in the database, but its .jdx file was not written: ${fileError}`, 'error');
-        else if (file) toast(`Saved ${file.split(/[\\/]/).pop()}`, 'success');
-      }).catch(e => {
-        console.warn('saveCapture:', e);
-        toast(`Capture "${cap.label}" was not saved to disk — it exists only in memory.`, 'error');
-      });
     },
+
+    // The backend has already saved it (database row + .jdx); this only shows it.
+    addSavedCapture: (cap) => set((s) => {
+      if (cap.sessionId !== s.activeId) return;
+      s.captures.push(cap);
+      const session = s.sessions.find(ss => ss.id === cap.sessionId);
+      if (session) session.captureCount += 1;
+    }),
 
     removeCapture: (id) => {
       set((s) => {
@@ -221,3 +210,11 @@ export const useSessionStore = create<SessionStore>()(
     },
   }))
 );
+
+// The backend files captures in the active workspace, so it has to know which
+// one that is — whichever way it changed (start-up, switch, delete).
+useSessionStore.subscribe((s, prev) => {
+  if (s.activeId && s.activeId !== prev.activeId) {
+    ipc.writeSetting('workspace.active', s.activeId).catch(e => console.warn('workspace.active:', e));
+  }
+});

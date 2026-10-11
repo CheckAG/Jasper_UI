@@ -23,7 +23,10 @@ interface AcqStore {
 
   setParam: <K extends keyof AcqParams>(key: K, value: AcqParams[K]) => void;
   setCursor: (c: CursorState | null) => void;
+  /** Turn Live on or off. Asks the backend; `paused` follows what it reports. */
   setPaused: (v: boolean) => void;
+  /** Change integration or averaging on the backend, which owns them. */
+  writeSetting: (key: 'integration' | 'averaging', value: number) => Promise<void>;
   setLiveSpectrum: (s: Spectrum) => void;
   /** Re-read instrument state from the backend. Called on a timer, and directly
    *  after anything that changes it so the UI does not wait for the next tick. */
@@ -67,38 +70,59 @@ export const useAcqStore = create<AcqStore>()(
       set((s) => { s.cursor = c; }),
 
     // Live needs a device. Guarded here so the button and the P shortcut both
-    // respect it.
-    setPaused: (v) =>
-      set((s) => { if (v || s.deviceMeta) s.paused = v; }),
+    // respect it; the backend refuses too.
+    setPaused: (v) => {
+      if (!v && !get().deviceMeta) return;
+      set((s) => { s.paused = v; });   // optimistic; the refresh below corrects it
+      (v ? ipc.stopLive() : ipc.startLive())
+        .catch(e => useUIStore.getState().pushToast(String(e), 'error'))
+        .finally(() => get().refreshInstrument());
+    },
+
+    writeSetting: async (key, value) => {
+      try {
+        const applied = await ipc.writeSetting(
+          key === 'integration' ? 'acquisition.integration_time_ms' : 'acquisition.averages', value);
+        set((s) => { s.params[key] = Number(applied); });
+      } catch (e) {
+        useUIStore.getState().pushToast(String(e), 'error');
+      }
+    },
 
     runCapture: async (tag = '') => {
       if (get().captureProgress) return;   // one measurement at a time
       // Capture only from a frozen plot. While Live is running the trace is
-      // moving, so there is no particular spectrum being captured — you would
-      // be recording whatever the device happened to be doing. Freeze first,
-      // look at what you have, then record it.
+      // moving, so there is no particular spectrum being captured.
       if (!get().paused) {
         useUIStore.getState().pushToast('Turn Live off before capturing.', 'info');
         return;
       }
-      const params = get().params;
-      set((s) => { s.captureProgress = { done: 0, total: Math.max(1, params.averaging) }; });
+      const sessions = useSessionStore.getState();
+      const sessionId = sessions.activeId;
+      if (!sessionId) return;
+      const { id, label, color } = sessions.nextCapture();
+      set((s) => { s.captureProgress = { done: 0, total: Math.max(1, get().params.averaging) }; });
       const stop = ipc.onCaptureProgress((done, total) =>
         set((s) => { s.captureProgress = { done, total }; }));
       try {
-        const spectrum = await ipc.capture(params);
-        // Written once, at the end: an average is not meaningful until every
-        // scan is in it.
-        set((s) => { s.liveSpectrum = spectrum; });
-        useSessionStore.getState().addCapture(params, spectrum.xs, spectrum.ys, tag);
+        // The backend measures and files it: a database row and a .jdx file.
+        const r = await ipc.capture({ id, label, tag, color });
+        set((s) => { s.liveSpectrum = r.spectrum; });
+        if (!r.saved) {
+          useUIStore.getState().pushToast('Captured, but no workspace is active, so it was not saved.', 'error');
+          return;
+        }
+        useSessionStore.getState().addSavedCapture({
+          id, sessionId, label, timestamp: r.timestamp, tag, params: r.params,
+          xs: r.spectrum.xs, ys: r.spectrum.ys, color,
+        });
+        if (r.fileError) useUIStore.getState().pushToast(`"${tag || label}" is in the database, but its .jdx file was not written: ${r.fileError}`, 'error');
+        else if (r.file) useUIStore.getState().pushToast(`Saved ${r.file.split(/[\\/]/).pop()}`, 'success');
       } catch (e) {
         useUIStore.getState().pushToast(String(e), 'error');
       } finally {
         stop();
         set((s) => { s.captureProgress = null; });
-        // Live is off by definition here, so the stream stays stopped: the
-        // captured spectrum remains on screen instead of being overwritten by
-        // the next frame.
       }
     },
 
@@ -132,26 +156,19 @@ export const useAcqStore = create<AcqStore>()(
     },
 
     refreshInstrument: async () => {
-      const [meta, cal] = await Promise.all([
-        ipc.getDeviceMetadata().catch(() => null),
-        ipc.getCalibrationState().catch(() => ({ dark: false, reference: false })),
-      ]);
+      let st;
+      try { st = await ipc.readInstrument(); } catch { return; }
       set((s) => {
-        // A new (or lost) device turns Live off, so plugging the board back in
-        // never resumes a stream nobody asked for.
-        // The last frame belongs to the old device, so it goes too; otherwise
-        // Dark/Reference stay enabled against a spectrum that is gone.
-        if (meta?.serial !== s.deviceMeta?.serial) { s.paused = true; s.liveSpectrum = null; }
-        s.deviceMeta = meta;
-        s.calHeld = cal;
-        // With the Abs/Refl/Trans chips gone, what the pipeline computes follows
-        // from what has been measured rather than from a button:
-        //   neither          → raw counts
-        //   dark only        → dark-subtracted counts
-        //   dark + reference → absorbance
-        // 'intensity' is the mode meaning "subtract the dark if there is one";
-        // 'absorbance' needs both frames.
-        s.params.mode = cal.dark && cal.reference ? 'absorbance' : 'intensity';
+        // A new (or lost) device: the last frame belongs to the old one, so it
+        // goes; otherwise Dark/Reference stay enabled against a spectrum that is gone.
+        if (st.meta?.serial !== s.deviceMeta?.serial) s.liveSpectrum = null;
+        s.deviceMeta = st.meta;
+        s.calHeld = { dark: st.dark, reference: st.reference };
+        // Everything below is owned by the backend; the store only mirrors it.
+        s.paused = !st.live;
+        s.params.integration = st.integration;
+        s.params.averaging = st.averaging;
+        s.params.mode = st.mode;
       });
     },
 

@@ -11,12 +11,10 @@ import { NewSessionDialog }      from './components/overlays/NewSessionDialog';
 import { Toaster }               from './components/overlays/Toaster';
 
 export default function App() {
-  const { params, paused, setParam, setPaused, setLiveSpectrum } = useAcqStore();
-  // Whether a device is connected, from the backend — the stream cannot start
-  // before one is. Serial rather than the object: the poller hands back a new
-  // object every 2 s, and depending on that would restart the stream on a timer.
-  const deviceSerial = useAcqStore(s => s.deviceMeta?.serial ?? null);
-  const { addCapture, init: initSessions } = useSessionStore();
+  // Live, integration and averaging live in the backend (Device API); the
+  // store mirrors them, polled below. Nothing here starts or restarts a stream.
+  const { paused, setPaused, setLiveSpectrum } = useAcqStore();
+  const { init: initSessions } = useSessionStore();
   const { density, cmdOpen, exportOpen, newSessionOpen, setCmdOpen } = useUIStore();
 
   // One-time init: density, session hydration, live-frame subscription
@@ -38,14 +36,6 @@ export default function App() {
       // reaches the canvas. Until this lands the backend holds off capturing,
       // so a slow render costs frame rate instead of accumulating a backlog.
       requestAnimationFrame(() => { ipc.frameConsumed().catch(() => {}); });
-
-      // The device clamps integration to its own range and reports what it
-      // applied. Snap the control to the truth rather than leaving it showing a
-      // value the hardware refused. Converges in one step: the next frame comes
-      // back with the value we now hold.
-      const applied = frame.params.integration;
-      const { params: current, setParam: set } = useAcqStore.getState();
-      if (applied > 0 && applied !== current.integration) set('integration', applied);
     });
     return () => {
       clearInterval(instrumentPoll);
@@ -54,23 +44,6 @@ export default function App() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Start and stop the stream with Live, and restart it whenever acquisition
-  // params change so the trace matches the settings. Pausing stops the device
-  // capturing rather than just hiding the result — the instrument has nothing
-  // to do while the plot is frozen.
-  //
-  // Connecting a device is also a start condition. This used to depend on
-  // `paused` alone: at launch it ran once with nothing connected, the start
-  // threw and was swallowed, and connecting afterwards never re-ran it — Live
-  // read as on while no frame was ever emitted.
-  useEffect(() => {
-    if (paused || !deviceSerial) {
-      ipc.stopAcquisition().catch(() => {});
-    } else {
-      ipc.startAcquisition(params).catch(() => {/* no instrument: canvas stays empty */});
-    }
-  }, [paused, deviceSerial, params.mode, params.integration, params.averaging]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -91,7 +64,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [paused, addCapture, setParam, setPaused, setCmdOpen]);
+  }, [paused, setPaused, setCmdOpen]);
 
   return (
     <>

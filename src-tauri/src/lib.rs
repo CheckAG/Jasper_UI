@@ -1,6 +1,7 @@
 mod state;
 pub mod instrument; // pub: integration tests drive the driver against the protocol simulator
 pub mod storage;
+mod api;
 mod commands;
 
 use tauri::Manager;
@@ -36,29 +37,15 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Instrument
-            cmd_discover_devices,
-            cmd_connect_device,
-            cmd_disconnect_device,
-            cmd_get_device_metadata,
-            cmd_get_diagnostics,
-            cmd_scan,
-            cmd_capture,
-            cmd_start_acquisition,
-            cmd_stop_acquisition,
+            // Instrument — everything but firmware and x-cal goes through the Device API
+            cmd_api,
             cmd_frame_consumed,
-            cmd_calibrate_dark,
-            cmd_calibrate_reference,
             cmd_calibrate_xcal,
-            cmd_get_calibration_state,
-            cmd_clear_calibration,
-            cmd_tag_last_frame,
             cmd_update_firmware,
             // Storage
             cmd_save_session,
             cmd_load_sessions,
             cmd_delete_session,
-            cmd_save_capture,
             cmd_workspace_dir,
             cmd_load_captures,
             cmd_delete_capture,

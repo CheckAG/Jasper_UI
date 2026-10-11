@@ -1,4 +1,4 @@
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{Mutex, atomic::{AtomicBool, AtomicU64, Ordering}};
 use std::sync::Arc;
 use crate::instrument::tcd1304::Tcd1304Driver;
 use crate::instrument::driver::SpectrumDriver;
@@ -32,6 +32,14 @@ pub struct AppState {
     /// (instrument::process). Arc: the streaming thread reads it per frame.
     pub calibration:     Arc<Mutex<crate::instrument::process::Calibration>>,
     pub sidecar:         SidecarHolder,
+    /// Acquisition settings. The backend owns them: the GUI, scripts and agents
+    /// all read and write them through the Device API (crate::api).
+    pub settings:        Mutex<crate::api::Settings>,
+    /// True while the live stream runs. Cleared by stop_acquisition and by a
+    /// stream that stops on a device error.
+    pub live:            Arc<AtomicBool>,
+    /// Device API audit log, one JSON object per line.
+    pub audit_path:      std::path::PathBuf,
 }
 
 impl AppState {
@@ -93,12 +101,16 @@ impl AppState {
             last_raw: Arc::new(Mutex::new(None)),
             calibration:    Arc::new(Mutex::new(Default::default())),
             sidecar:        SidecarHolder::new(script_path),
+            settings:       Mutex::new(Default::default()),
+            live:           Arc::new(AtomicBool::new(false)),
+            audit_path:     data_dir.join("api-audit.jsonl"),
         }
     }
 
     /// Retire any running acquisition thread by advancing the generation.
     pub fn stop_acquisition(&self) {
         self.acq_generation.fetch_add(1, Ordering::SeqCst);
+        self.live.store(false, Ordering::SeqCst);
         // Clear the backpressure gate: whatever frame was awaiting a render
         // belongs to a stream that no longer exists, and leaving the gate set
         // would make the next stream wait out its stale timeout for nothing.

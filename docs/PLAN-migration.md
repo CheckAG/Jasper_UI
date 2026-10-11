@@ -86,6 +86,14 @@ files; the x column is labelled `pixel` everywhere until wavelength calibration 
 - Accept: everything in the table above works from one screen with the board connected; nothing from Phase E regressed.
 
 ### F4 · Device API core (`jasperd`, in-process first)
+**Built 2026-10-11** (verified against the simulator, not the board). `src-tauri/src/api/`: `read` (one
+name or `names`), `write`, `invoke`; variables `device.state|info|diagnostics`,
+`acquisition.integration_time_ms|averages|live`, `reference.dark|white`, `processing.mode`,
+`workspace.active`; commands `discover`, `connect`, `disconnect`, `start_live`, `stop_live`, `capture`,
+`capture_dark|reference`, `clear_dark|reference`. The backend now owns integration, averaging and Live;
+the GUI mirrors them. `capture` files the spectrum itself (row + `.jdx`), so a script's capture lands
+like the GUI's. Audit log: `<app data>/api-audit.jsonl`, writes and commands only (reads are polled every
+2 s). Still outside the API: firmware update and x-cal (own Tauri commands), frame backpressure.
 - `src-tauri/src/api/`: JSON-RPC 2.0 dispatcher with `read` / `write` / `invoke` / `subscribe`; variable catalogue for what exists today (`device.*`, `acquisition.integration_time_ms`, `acquisition.averages`, `reference.dark`, `reference.white`, `processing.mode`, `spectrum.live`, `spectrum.last`).
 - Limits from device METADATA (`integMinMs`–`integMaxMs`). Script/agent callers get `LIMIT_EXCEEDED`; the GUI may clamp its own input.
 - GUI routes through it: one Tauri command `cmd_api` → dispatcher. Per-feature commands in `commands/instrument.rs` become thin calls, then go (S1-17).
