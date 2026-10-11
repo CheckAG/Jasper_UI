@@ -42,6 +42,7 @@ Adopted mockup: [`docs/design/jasper-toolbox.html`](design/jasper-toolbox.html).
 Each step is one commit (or a few) on `feature/migration`, app working after each.
 
 ### F1 · Theme switch
+**Done 2026-10-11** (`86f439f`).
 - `src/styles/tokens.css`: add a `:root[data-theme="dark"]` block redefining every colour token (palette in the mockup). Drop the "light only" header.
 - `uiStore`: `theme: 'light' | 'dark'`, persisted next to `density`; `App.tsx` sets `data-theme` on `<html>`.
 - `LiveSpectrum` / `StaticChart`: read colours from CSS variables at draw time instead of the `theme="light"` prop; redraw on theme change.
@@ -68,7 +69,14 @@ Each step is one commit (or a few) on `feature/migration`, app working after eac
 - Accept: capture N spectra → N rows + N `.jdx` files; each `.jdx` opens in SpectraGryph; a round-trip read of the file
   matches the stored arrays.
 
+**Built 2026-10-11 (not yet run on the board).** Deviations: the spectra root is `~/JASPER` or
+`JASPER_DATA_DIR` (no in-app setting yet); the folder is derived from the workspace name, not stored;
+dark/reference frames are not yet written as files (the backend holding them does not know the
+workspace); the export dialog offers CSV/XLSX/TXT and points at the folder instead of copying `.jdx`
+files; the x column is labelled `pixel` everywhere until wavelength calibration exists.
+
 ### F3 · Single-screen shell
+**Done 2026-10-11** (`25f5009`, not yet run on the board).
 - New `layout/MenuBar.tsx`, `layout/Toolbar.tsx`, `layout/ToolboxScreen.tsx`. Reuse existing components; move Instrument pieces into `overlays/InstrumentsDialog`, `FirmwareDialog`, `DiagnosticsDialog`.
 - `features.ts`: the rail goes; Analyze/Chemometrics stay compiled but unreachable.
 - Responsive: three columns ≥1180 px; captures/API log drop below the plot under 1180; one column under 760 (plot first).

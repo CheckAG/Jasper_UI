@@ -1,32 +1,32 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useUIStore }      from '../../store/uiStore';
 import { useSessionStore } from '../../store/sessionStore';
-import { useAnalyzeStore } from '../../store/analyzeStore';
 import { ipc }             from '../../lib/ipc';
 import { buildExport, exportXlsx } from '../../lib/exporters';
 import { Button }          from '../design/Button';
 import type { ExportFormat } from '../../lib/types';
 
+// SVG, PDF, CSV matrix and JCAMP-DX builders stay in exporters.ts; JCAMP files
+// are already written per capture into the workspace folder.
 const FORMATS: Array<{ id: ExportFormat; name: string; ext: string; desc: string }> = [
-  { id: 'xlsx',        name: 'Excel',     ext: '.xlsx',desc: 'Wavelength + one column per capture, with a metadata sheet' },
-  { id: 'jcamp-dx',    name: 'JCAMP-DX',  ext: '.dx',  desc: 'IUPAC standard, round-trip lossless with method sidecar' },
-  { id: 'csv-xy',      name: 'CSV (x/y)', ext: '.csv', desc: 'Wavelength + intensity column per capture' },
-  { id: 'csv-matrix',  name: 'CSV matrix',ext: '.csv', desc: 'Samples × wavelengths matrix format' },
-  { id: 'svg',         name: 'SVG figure',ext: '.svg', desc: 'Print-grade vector figure, publication ready' },
+  { id: 'csv',  name: 'CSV',   ext: '.csv',  desc: 'Metadata as # lines, then pixel + one column per capture' },
+  { id: 'xlsx', name: 'Excel', ext: '.xlsx', desc: 'Spectra sheet plus a metadata sheet' },
+  { id: 'txt',  name: 'Text',  ext: '.txt',  desc: 'Same as CSV, tab-separated' },
 ];
 
 export function ExportDialog() {
-  const [format, setFormat] = useState<ExportFormat>('jcamp-dx');
-  const [metadata, setMetadata] = useState(true);
-  const [pipeline, setPipeline] = useState(true);
-  const [selected, setSelected] = useState(false);
+  const [format, setFormat] = useState<ExportFormat>('csv');
+  const { activeId, captures, selectedIds, activeSession } = useSessionStore();
+  // Default to the selection when there is one: that is what is on the plot.
+  const [selected, setSelected] = useState(selectedIds.length > 0);
+  const [folder, setFolder] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { setExportOpen } = useUIStore();
-  const { activeId, captures, selectedIds, activeSession } = useSessionStore();
-  const pipelineNodes = useAnalyzeStore(s => s.pipeline);
+  const sessionName = activeSession()?.name;
+  useEffect(() => { if (sessionName) ipc.workspaceDir(sessionName).then(setFolder); }, [sessionName]);
 
   async function doExport() {
     setExporting(true);
@@ -40,12 +40,7 @@ export function ExportDialog() {
       if (format === 'xlsx') {
         path = await exportXlsx(session, caps);
       } else {
-        const { filename, content } = await buildExport(
-          format,
-          session?.name ?? 'jasper',
-          caps,
-          pipeline ? pipelineNodes : undefined,
-        );
+        const { filename, content } = await buildExport(format, session, caps);
         path = await ipc.saveExport(filename, content);
       }
       if (path) {
@@ -56,7 +51,7 @@ export function ExportDialog() {
           action: 'export',
           actor: session?.operator || 'local',
           timestamp: Date.now(),
-          detail: JSON.stringify({ format, count: caps.length, path, includeMetadata: metadata }),
+          detail: JSON.stringify({ format, count: caps.length, path }),
         });
       } else {
         setError('Export cancelled');
@@ -86,7 +81,7 @@ export function ExportDialog() {
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, padding: 16 }}>
           {FORMATS.map(f => (
             <button key={f.id} onClick={() => setFormat(f.id)} style={{
               textAlign: 'left', cursor: 'pointer', padding: 12,
@@ -107,9 +102,7 @@ export function ExportDialog() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 16px 16px' }}>
           {[
-            { label: 'Include metadata & audit trail', val: metadata, set: setMetadata },
-            { label: 'Include pre-processing pipeline', val: pipeline, set: setPipeline },
-            { label: 'Selected captures only', val: selected, set: setSelected },
+            { label: `Selected captures only (${selectedIds.length})`, val: selected, set: setSelected },
           ].map(opt => (
             <label key={opt.label} style={{ display: 'flex', alignItems: 'center', gap: 8,
               fontSize: 13, color: 'var(--ink-2)', cursor: 'pointer' }}>
@@ -120,6 +113,12 @@ export function ExportDialog() {
           ))}
         </div>
 
+        {folder && (
+          <span style={{ display: 'block', margin: '0 16px 12px', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+            Each capture is already saved as a JCAMP-DX file in{' '}
+            <span className="mono" style={{ color: 'var(--ink-2)', wordBreak: 'break-all' }}>{folder}</span>
+          </span>
+        )}
         {result && (
           <div style={{ margin: '0 16px 12px', padding: '8px 12px', borderRadius: 8,
             background: 'rgba(31,157,85,0.08)', border: '1px solid rgba(31,157,85,0.3)',

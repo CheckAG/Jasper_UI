@@ -237,15 +237,22 @@ export const ipc = {
       })))
     : Promise.resolve([]),
 
-  saveCapture: (capture: Capture): Promise<void> => IS_TAURI
-    ? tauriInvoke('cmd_save_capture', { capture: {
+  /** Saves to the database and writes the capture's .jdx file. `fileError` set
+   *  means the row is saved but the file is not. */
+  saveCapture: (capture: Capture): Promise<{ file: string | null; fileError: string | null }> => IS_TAURI
+    ? tauriInvoke<{ file: string | null; file_error: string | null }>('cmd_save_capture', { capture: {
         id: capture.id, session_id: capture.sessionId,
         label: capture.label, timestamp: capture.timestamp,
         tag: capture.tag, params_json: JSON.stringify(capture.params),
         xs: Array.from(capture.xs), ys: Array.from(capture.ys),
-        color: capture.color, position: null,
-      }})
-    : Promise.resolve(),
+        color: capture.color, position: null, file_path: null,
+      }}).then(r => ({ file: r.file, fileError: r.file_error }))
+    : Promise.resolve({ file: null, fileError: null }),
+
+  /** Folder a workspace's .jdx files are written to. */
+  workspaceDir: (name: string): Promise<string | null> => IS_TAURI
+    ? tauriInvoke<string>('cmd_workspace_dir', { name })
+    : Promise.resolve(null),
 
   loadCaptures: (sessionId: string): Promise<Capture[]> => IS_TAURI
     ? tauriInvoke<CaptureRowDTO[]>('cmd_load_captures', { sessionId }).then(rows =>

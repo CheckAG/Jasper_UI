@@ -9,6 +9,8 @@ pub struct AppState {
     /// scan() through the trait (mock and real device alike).
     pub driver:          Arc<Mutex<Box<dyn SpectrumDriver + Send>>>,
     pub db_path:         String,
+    /// Root of the per-workspace spectra folders (storage::files).
+    pub spectra_root:    std::path::PathBuf,
     /// Monotonic acquisition generation. Each start bumps it; a streaming thread
     /// runs only while its captured generation still matches — so a restart
     /// (e.g. on mode change) cleanly retires the previous thread.
@@ -33,13 +35,14 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(data_dir: &std::path::Path) -> Self {
+    pub fn new(data_dir: &std::path::Path, spectra_root: std::path::PathBuf) -> Self {
         let db_path = data_dir.join("jasper.db").to_string_lossy().to_string();
         // Worth logging: launched from a snap-confined terminal (VS Code),
         // XDG_DATA_HOME points inside the snap, so the app uses a different
         // database than it does from a plain shell. Sessions "disappearing"
         // between launches is this, not data loss.
         eprintln!("[AppState] database: {db_path}");
+        eprintln!("[AppState] spectra:  {}", spectra_root.display());
 
         if let Ok(conn) = crate::storage::db::open(&db_path) {
             drop(conn);
@@ -84,6 +87,7 @@ impl AppState {
         Self {
             driver:         Arc::new(Mutex::new(driver)),
             db_path,
+            spectra_root,
             acq_generation: Arc::new(AtomicU64::new(0)),
             frame_in_flight: Arc::new(AtomicU64::new(0)),
             last_raw: Arc::new(Mutex::new(None)),

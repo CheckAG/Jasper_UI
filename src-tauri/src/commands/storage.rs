@@ -1,8 +1,10 @@
 use tauri::State;
 use crate::state::AppState;
+use serde::Serialize;
 use crate::storage::db::{
     self, SessionRow, CaptureRow, AuditRow,
 };
+use crate::storage::files;
 
 fn open(state: &AppState) -> Result<rusqlite::Connection, String> {
     db::open(&state.db_path).map_err(|e| e.to_string())
@@ -38,13 +40,36 @@ pub fn cmd_delete_session(
 
 // ── Captures ──────────────────────────────────────────────────────────────────
 
+#[derive(Serialize)]
+pub struct SavedCapture {
+    /// The .jdx written for the capture, or None when writing it failed.
+    file:       Option<String>,
+    file_error: Option<String>,
+}
+
+/// Saves the capture twice: a database row, then a .jdx file in its workspace
+/// folder. A failed file write never loses the capture — the row is already in.
 #[tauri::command]
 pub fn cmd_save_capture(
     state: State<'_, AppState>,
     capture: CaptureRow,
-) -> Result<(), String> {
+) -> Result<SavedCapture, String> {
     let conn = open(&state)?;
-    db::insert_capture(&conn, &capture).map_err(|e| e.to_string())
+    db::insert_capture(&conn, &capture).map_err(|e| e.to_string())?;
+    match files::write_capture(&conn, &state.spectra_root, &capture) {
+        Ok(path) => {
+            let path = path.to_string_lossy().to_string();
+            db::set_capture_file(&conn, &capture.id, &path).map_err(|e| e.to_string())?;
+            Ok(SavedCapture { file: Some(path), file_error: None })
+        }
+        Err(e) => Ok(SavedCapture { file: None, file_error: Some(e) }),
+    }
+}
+
+/// The folder a workspace's .jdx files go in (it may not exist yet).
+#[tauri::command]
+pub fn cmd_workspace_dir(state: State<'_, AppState>, name: String) -> String {
+    files::workspace_dir(&state.spectra_root, &name).to_string_lossy().to_string()
 }
 
 #[tauri::command]
@@ -62,7 +87,13 @@ pub fn cmd_delete_capture(
     id: String,
 ) -> Result<(), String> {
     let conn = open(&state)?;
-    db::delete_capture(&conn, &id).map_err(|e| e.to_string())
+    if let Some(path) = db::delete_capture(&conn, &id).map_err(|e| e.to_string())? {
+        // The row is gone either way; a file that cannot be moved stays put.
+        if let Err(e) = files::trash(std::path::Path::new(&path)) {
+            eprintln!("[storage] could not move {path} to .trash: {e}");
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]

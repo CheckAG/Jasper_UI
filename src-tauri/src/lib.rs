@@ -23,7 +23,8 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)
                 .expect("failed to create app data dir");
 
-            app.manage(AppState::new(&data_dir));
+            let home = app.path().home_dir().expect("failed to resolve home dir");
+            app.manage(AppState::new(&data_dir, storage::files::spectra_root(&home)));
 
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -58,6 +59,7 @@ pub fn run() {
             cmd_load_sessions,
             cmd_delete_session,
             cmd_save_capture,
+            cmd_workspace_dir,
             cmd_load_captures,
             cmd_delete_capture,
             cmd_count_captures,

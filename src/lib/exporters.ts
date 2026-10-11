@@ -11,6 +11,28 @@ function safeLabel(c: Capture): string {
   return (c.tag || c.label || c.id).replace(/[,\n"]/g, ' ').trim();
 }
 
+/** CSV or tab-separated text: `# key: value` metadata lines, then an x column
+ *  and one column per capture. The x column is shared, taken from the first
+ *  capture, as in the Excel export. */
+export function buildDelimited(captures: Capture[], session: Session | undefined, sep: ',' | '\t'): string {
+  const cell = (v: string) => (sep === ',' && /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v.replace(/[\t\n]/g, ' '));
+  const lines = [
+    `# workspace: ${session?.name ?? ''}`,
+    `# operator: ${session?.operator ?? ''}`,
+    `# exported: ${new Date().toISOString()}`,
+    `# x: detector pixel`,
+    ...captures.map((c, i) =>
+      `# column ${i + 2}: ${c.tag || c.label} | ${new Date(c.timestamp).toISOString()} | ${c.params.mode} | ` +
+      `${c.params.integration} ms | ${c.params.averaging} avg`),
+    ['pixel', ...captures.map(c => cell(c.tag || c.label))].join(sep),
+  ];
+  const xs = captures[0]?.xs ?? new Float32Array();
+  for (let i = 0; i < xs.length; i++) {
+    lines.push([xs[i], ...captures.map(c => (i < c.ys.length ? c.ys[i] : ''))].join(sep));
+  }
+  return lines.join('\n') + '\n';
+}
+
 /** CSV with a shared wavelength column and one intensity column per capture. */
 export function buildCSVxy(captures: Capture[]): string {
   if (captures.length === 0) return 'wavelength_nm\n';
@@ -86,7 +108,7 @@ export async function buildJCAMP(captures: Capture[], pipeline?: unknown[]): Pro
 export interface ExportResult { filename: string; content: string }
 
 const EXT: Record<string, string> = {
-  'jcamp-dx': 'dx', 'csv-xy': 'csv', 'csv-matrix': 'csv', 'svg': 'svg', 'pdf': 'pdf', 'xlsx': 'xlsx',
+  'jcamp-dx': 'dx', 'csv': 'csv', 'txt': 'txt', 'csv-xy': 'csv', 'csv-matrix': 'csv', 'svg': 'svg', 'pdf': 'pdf', 'xlsx': 'xlsx',
 };
 
 function exportFilename(format: string, sessionName: string): string {
@@ -102,7 +124,7 @@ export function exportXlsx(session: Session | undefined, captures: Capture[]): P
   // x/y. Captures taken on differently calibrated axes would need a column each.
   const xs = captures[0]?.xs ?? new Float32Array();
   const spectra: Array<Array<number | string | null>> = [
-    ['wavelength_nm', ...captures.map(safeLabel)],
+    ['pixel', ...captures.map(safeLabel)],
   ];
   for (let i = 0; i < xs.length; i++) {
     spectra.push([xs[i], ...captures.map(c => (i < c.ys.length ? c.ys[i] : null))]);
@@ -124,14 +146,16 @@ export function exportXlsx(session: Session | undefined, captures: Capture[]): P
 /** Build the file content + default filename for a given format. */
 export async function buildExport(
   format: string,
-  sessionName: string,
+  session: Session | undefined,
   captures: Capture[],
   pipeline?: unknown[],
 ): Promise<ExportResult> {
-  const filename = exportFilename(format, sessionName);
+  const filename = exportFilename(format, session?.name ?? 'jasper');
 
   let content: string;
   switch (format) {
+    case 'csv':        content = buildDelimited(captures, session, ','); break;
+    case 'txt':        content = buildDelimited(captures, session, '\t'); break;
     case 'csv-xy':     content = buildCSVxy(captures); break;
     case 'csv-matrix': content = buildCSVmatrix(captures); break;
     case 'svg':        content = buildSVG(captures); break;

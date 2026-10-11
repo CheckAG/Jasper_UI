@@ -21,9 +21,6 @@ export const ALL_WORKSPACES: { id: WorkspaceId; label: string }[] = [
  * Analyze and Chemometrics are hidden, not deleted — their code, stores and the
  * Python sidecar behind them are untouched, so bringing them back is adding two
  * entries to this array and nothing else.
- *
- * `store/analyzeStore.ts` stays regardless: the Export dialog reads the pipeline
- * from it, so it is live even with the Analyze workspace hidden.
  */
 export const ENABLED_WORKSPACES: WorkspaceId[] = [];
 

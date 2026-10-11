@@ -138,7 +138,10 @@ export const useSessionStore = create<SessionStore>()(
         if (session) session.captureCount += 1;
       });
       // Persist; on failure the capture is only in memory → tell the user
-      ipc.saveCapture(cap).catch(e => {
+      ipc.saveCapture(cap).then(({ file, fileError }) => {
+        if (fileError) toast(`"${cap.tag || cap.label}" is in the database, but its .jdx file was not written: ${fileError}`, 'error');
+        else if (file) toast(`Saved ${file.split(/[\\/]/).pop()}`, 'success');
+      }).catch(e => {
         console.warn('saveCapture:', e);
         toast(`Capture "${cap.label}" was not saved to disk — it exists only in memory.`, 'error');
       });

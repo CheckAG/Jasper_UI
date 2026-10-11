@@ -1,7 +1,14 @@
+import { useEffect, useState } from 'react';
 import { useAcqStore } from '../../store/acqStore';
+import { useSessionStore } from '../../store/sessionStore';
+import { ipc } from '../../lib/ipc';
 
 export function StatusBar() {
   const { params, cursor } = useAcqStore();
+  // Where this workspace's .jdx files go.
+  const name = useSessionStore(s => s.activeSession()?.name);
+  const [folder, setFolder] = useState<string | null>(null);
+  useEffect(() => { if (name) ipc.workspaceDir(name).then(setFolder); }, [name]);
 
   return (
     <footer style={{
@@ -14,7 +21,7 @@ export function StatusBar() {
         <>
           <span>
             <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>x</span>
-            <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{cursor.x.toFixed(1)} nm</b>
+            <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{Math.round(cursor.x)} px</b>
           </span>
           <span>
             <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>y</span>
@@ -28,7 +35,9 @@ export function StatusBar() {
       ) : (
         <span>Hover spectrum for readout</span>
       )}
-      <span style={{ marginLeft: 'auto' }}>
+      <span style={{ marginLeft: 'auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        title={folder ?? undefined}>{folder}</span>
+      <span>
         <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Integ</span>
         <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{params.integration} ms</b>
       </span>
