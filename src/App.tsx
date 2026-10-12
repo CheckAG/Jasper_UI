@@ -37,9 +37,17 @@ export default function App() {
       // so a slow render costs frame rate instead of accumulating a backlog.
       requestAnimationFrame(() => { ipc.frameConsumed().catch(() => {}); });
     });
+    // A capture by any caller lands in the Captures panel. The GUI's own capture
+    // also arrives through runCapture; the store ignores the second copy.
+    const unlistenSaved = ipc.onCaptureSaved((sessionId, id) => {
+      const s = useSessionStore.getState();
+      if (sessionId === s.activeId && s.captures.some(c => c.id === id)) return;
+      s.syncCaptures(sessionId).catch(() => {});
+    });
     return () => {
       clearInterval(instrumentPoll);
       unlisten();
+      unlistenSaved();
       ipc.stopAcquisition().catch(() => {});
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -8,7 +8,7 @@ Updated 2026-10-12. Refresh with `/handoff` at the end of every working session.
 **Continue F5** on `feature/migration`. Committed and simulator-tested, not yet on the board: the socket
 (`src-tauri/src/api/server.rs`, plain TCP JSON lines on `127.0.0.1:8765`), the Python client/CLI and the
 read-only MCP server (`clients/python/jasper/`, `python -m jasper.mcp`, self-check
-`python3 clients/python/test_mcp.py`). Next: refresh the Captures panel when a script captures, `subscribe`
+`python3 clients/python/test_mcp.py`). A `capture-saved` event now brings script captures into the Captures panel (verified on the board 2026-10-12). Next: `subscribe`
 for live spectra, the confirmation flow, Stage-2 MCP tools. Or finish F6. See `docs/PLAN-migration.md`.
 Adding a sensor: `src-tauri/src/instrument/mod.rs` explains the steps; nothing else names one.
 

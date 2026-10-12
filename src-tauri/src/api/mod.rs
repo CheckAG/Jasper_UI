@@ -301,6 +301,8 @@ fn capture(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<V
         return Ok(json!({ "frame": frame, "saved": null }));
     };
     let saved = save_capture(state, &session_id, &frame, &raw, &params, args).map_err(internal)?;
+    // Whoever captured, the GUI shows it: a script's capture lands in its Captures panel too.
+    events.emit("capture-saved", json!({ "session_id": session_id, "id": saved["id"] }));
     Ok(json!({ "frame": frame, "saved": saved }))
 }
 
@@ -503,6 +505,7 @@ mod tests {
         assert!(jdx.contains("##DATA TYPE=LINK\n##BLOCKS=4\n") && jdx.contains("##TITLE=reference\n##BLOCK_ID=4\n"));
         assert_eq!(db::count_captures(&conn, "s1").unwrap(), 1);
         assert!(sink.0.lock().unwrap().iter().any(|e| e == "capture-progress"));
+        assert!(sink.0.lock().unwrap().iter().any(|e| e == "capture-saved"));
 
         // Writes and commands are in the audit log with their caller; reads are not.
         let log = std::fs::read_to_string(&state.audit_path).unwrap();

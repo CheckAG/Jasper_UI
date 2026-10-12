@@ -10,6 +10,11 @@ const PALETTE = [
   '#0ea5e9','#f59e0b','#10b981','#ef4444',
 ];
 
+/** Captures saved without a colour (from a script) get one by position. */
+function withColors(caps: Capture[]): Capture[] {
+  return caps.map((c, i) => c.color ? c : { ...c, color: PALETTE[i % PALETTE.length] });
+}
+
 function makeId() {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -30,6 +35,8 @@ interface SessionStore {
   nextCapture:      () => { id: string; label: string; color: string };
   /** Show a capture the backend has saved. */
   addSavedCapture:  (cap: Capture) => void;
+  /** Pick up captures filed by another caller (a script, the CLI, an agent). */
+  syncCaptures:     (sessionId: string) => Promise<void>;
   removeCapture:    (id: string) => void;
   toggleSelected:   (id: string) => void;
   clearSelected:    () => void;
@@ -85,7 +92,7 @@ export const useSessionStore = create<SessionStore>()(
           ?? get().addSession(DEFAULT_SESSION_NAME, '', '').id;
         set(s => { s.activeId = activeId; });
 
-        const caps = await ipc.loadCaptures(activeId);
+        const caps = withColors(await ipc.loadCaptures(activeId));
         if (caps.length) set(s => { s.captures = caps; });
       } catch (e) {
         console.warn('Session init failed (non-Tauri context?):', e);
@@ -107,7 +114,7 @@ export const useSessionStore = create<SessionStore>()(
       // If nothing cached, load from SQLite
       if (get().captures.length === 0) {
         try {
-          const caps = await ipc.loadCaptures(id);
+          const caps = withColors(await ipc.loadCaptures(id));
           if (caps.length > 0) {
             set(s => {
               s.captures = caps;
@@ -130,11 +137,27 @@ export const useSessionStore = create<SessionStore>()(
 
     // The backend has already saved it (database row + .jdx); this only shows it.
     addSavedCapture: (cap) => set((s) => {
-      if (cap.sessionId !== s.activeId) return;
+      // The capture-saved event may have brought it in already.
+      if (cap.sessionId !== s.activeId || s.captures.some(c => c.id === cap.id)) return;
       s.captures.push(cap);
       const session = s.sessions.find(ss => ss.id === cap.sessionId);
       if (session) session.captureCount += 1;
     }),
+
+    syncCaptures: async (sessionId) => {
+      if (sessionId !== get().activeId) {
+        set(s => { delete s.stash[sessionId]; });   // reload when next opened
+        return;
+      }
+      const all = withColors(await ipc.loadCaptures(sessionId));
+      set(s => {
+        if (s.activeId !== sessionId) return;
+        const known = new Set(s.captures.map(c => c.id));
+        for (const c of all) if (!known.has(c.id)) s.captures.push(c);
+        const session = s.sessions.find(x => x.id === sessionId);
+        if (session) session.captureCount = s.captures.length;
+      });
+    },
 
     removeCapture: (id) => {
       set((s) => {

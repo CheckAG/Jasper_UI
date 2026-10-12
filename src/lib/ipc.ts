@@ -212,6 +212,15 @@ export const ipc = {
     : noBackend('Capturing'),
 
   /** Scan-by-scan progress of a capture in flight. */
+  /** A capture was filed by any caller — the GUI, a script, the CLI or an agent. */
+  onCaptureSaved: (cb: (sessionId: string, id: string) => void): (() => void) => {
+    if (!IS_TAURI) return () => {};
+    let unlisten: (() => void) | null = null;
+    listen<{ session_id: string; id: string }>('capture-saved', e => cb(e.payload.session_id, e.payload.id))
+      .then(fn => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  },
+
   onCaptureProgress: (cb: (done: number, total: number) => void): (() => void) => {
     if (!IS_TAURI) return () => {};
     let unlisten: (() => void) | null = null;
@@ -298,7 +307,8 @@ export const ipc = {
           label: r.label ?? '', timestamp: r.timestamp,
           tag: r.tag ?? '', params: JSON.parse(r.params_json) as AcqParams,
           xs: new Float32Array(r.xs), ys: new Float32Array(r.ys),
-          color: r.color ?? '#1f5dff',
+          // Empty when the capture came from a script; the store colours it.
+          color: r.color ?? '',
         })))
     : Promise.resolve([]),
 
