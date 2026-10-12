@@ -27,6 +27,20 @@ pub fn run() {
             let home = app.path().home_dir().expect("failed to resolve home dir");
             app.manage(AppState::new(&data_dir, storage::files::spectra_root(&home)));
 
+            // Scripts, the CLI and agents reach the Device API here. A second
+            // copy of the app finds the port taken and runs without it.
+            match std::net::TcpListener::bind(("127.0.0.1", api::server::PORT)) {
+                Ok(listener) => {
+                    let handle = app.handle().clone();
+                    let events: std::sync::Arc<dyn api::Events> = std::sync::Arc::new(handle.clone());
+                    api::server::serve(listener, std::sync::Arc::new(move |caller, req| {
+                        api::dispatch(&handle.state::<AppState>(), events.clone(), caller, req)
+                    }));
+                    eprintln!("[api] listening on 127.0.0.1:{}", api::server::PORT);
+                }
+                Err(e) => eprintln!("[api] not listening on 127.0.0.1:{}: {e}", api::server::PORT),
+            }
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

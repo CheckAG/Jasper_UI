@@ -5,14 +5,15 @@ Updated 2026-10-12. Refresh with `/handoff` at the end of every working session.
 
 ## Now
 
-**Pick the next Phase F step** on `feature/migration`: finish F6 (settings profiles, recent sessions, burst
-capture, auto-reconnect on replug) or start F5 (WebSocket on `127.0.0.1:8765` + Python client). Ask the
-user which. See `docs/PLAN-migration.md`. Push `feature/migration` first. It is 3 commits ahead of origin.
+**Continue F5** on `feature/migration`. The socket and Python client are committed: plain TCP JSON lines on
+`127.0.0.1:8765` (`src-tauri/src/api/server.rs`) and `clients/python/jasper`. They are simulator-tested,
+not yet run on the board. Next: refresh the Captures panel when a script captures (it loads only on workspace
+open/switch), `subscribe` for live spectra, the read-only MCP server, and the confirmation flow. Or finish
+F6 (profiles, recent sessions, burst capture, auto-reconnect). See `docs/PLAN-migration.md`.
 
 ## State
 
-**Phase F (Toolbox design adoption) is on `feature/migration`: F1–F4 done, F6 partly done, F5 not
-started.** Phase E stays at 9 of 12 (`feature_list.json`; it has no Phase F entries).
+**Phase F (Toolbox design adoption) is on `feature/migration`: F1–F4 done, F5 and F6 partly done.** Phase E stays at 9 of 12 (`feature_list.json`; it has no Phase F entries).
 
 **Everything committed on `feature/migration` was verified on the real board by the user, 2026-10-12**
 (serial `380B1C3537323731`):
@@ -48,7 +49,7 @@ started.** Phase E stays at 9 of 12 (`feature_list.json`; it has no Phase F entr
 
 ## Uncommitted work
 
-Clean once the F6 and compound-`.jdx` commits land (this handoff goes in the second).
+Clean.
 
 ## Learned this session
 

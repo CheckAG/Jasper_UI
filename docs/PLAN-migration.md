@@ -102,6 +102,12 @@ like the GUI's. Audit log: `<app data>/api-audit.jsonl`, writes and commands onl
 - Accept: every GUI action shows up in the audit log; a test drives the dispatcher with the simulator.
 
 ### F5 · External transport + clients
+**Partly built 2026-10-12** (simulator-tested, not yet on the board). User chose **plain TCP, one JSON object
+per line** on `127.0.0.1:8765` over WebSocket: no new dependencies on either side. `src-tauri/src/api/server.rs`
+hands each line to `dispatch`; a client names itself `script`/`cli`/`agent` (never `gui`, so it gets
+`LIMIT_EXCEEDED` instead of clamping). `clients/python/jasper`: `Client.read/write/invoke`, and
+`python -m jasper` as the CLI. Not yet: live-spectrum streaming to clients (`subscribe`), the MCP server,
+the confirmation flow.
 - WebSocket listener on `127.0.0.1:8765`, localhost only (new dep: `tokio-tungstenite`). Spectra as binary frames.
 - `clients/python/jasper`: thin client (`read`, `write`, `invoke`). CLI on top of it.
 - Read-only MCP server exposing `jasper_read` + the reference file.

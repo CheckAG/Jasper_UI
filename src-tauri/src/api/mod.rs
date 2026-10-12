@@ -1,7 +1,7 @@
 //! The JASPER Device API: the one path from any client to the instrument.
 //!
 //! The GUI reaches it through the `cmd_api` Tauri command; scripts, the CLI and
-//! agents will reach the same `dispatch` over a local socket (Phase F5). Every
+//! agents reach the same `dispatch` over a local socket (`server.rs`, Phase F5). Every
 //! caller gets the same variables, the same limits and the same numbers.
 //!
 //! Requests follow the Device API reference (docs: JASPER_Device_API.md):
@@ -21,6 +21,8 @@ use crate::instrument::driver::{AcqParams, SpectrumDriver, SpectrumFrame};
 use crate::instrument::process::{self, CalFrame};
 use crate::state::AppState;
 use crate::storage::{db, files};
+
+pub mod server;
 
 /// Acquisition settings the backend owns.
 #[derive(Debug, Clone)]
