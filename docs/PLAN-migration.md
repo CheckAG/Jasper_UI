@@ -71,8 +71,9 @@ Each step is one commit (or a few) on `feature/migration`, app working after eac
 
 **Built 2026-10-11 (not yet run on the board).** Deviations: the spectra root is `~/JASPER` or
 `JASPER_DATA_DIR` (no in-app setting yet); the folder is derived from the workspace name, not stored;
-dark/reference frames are not yet written as files (the backend holding them does not know the
-workspace); the export dialog offers CSV/XLSX/TXT and points at the folder instead of copying `.jdx`
+dark/reference frames are not written as separate files; instead (2026-10-12, user's choice) each capture's
+`.jdx` is a JCAMP-DX compound file — processed spectrum as block 1, then the raw sample, dark and reference
+held at capture time; the export dialog offers CSV/XLSX/TXT and points at the folder instead of copying `.jdx`
 files; the x column is labelled `pixel` everywhere until wavelength calibration exists.
 
 ### F3 · Single-screen shell

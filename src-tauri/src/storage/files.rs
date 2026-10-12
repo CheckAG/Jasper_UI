@@ -60,8 +60,32 @@ pub fn jcamp(title: &str, meta: &[(&str, String)], x_units: &str, y_units: &str,
     s
 }
 
+/// A spectrum filed with a capture so it can be recomputed later: the raw
+/// sample, and the dark and reference it was processed against.
+pub struct Part<'a> {
+    pub title: &'a str,
+    pub ys: &'a [f32],
+    pub integration_ms: u32,
+    pub averages: u32,
+}
+
+/// JCAMP-DX YUNITS for the pipeline's `units` (driver.rs `SpectrumFrame.units`).
+fn y_units(units: &str) -> &'static str {
+    match units { "abs" => "ABSORBANCE", "ratio" => "TRANSMITTANCE", _ => "ARBITRARY UNITS" }
+}
+
+/// Number a block for a compound file: `##BLOCK_ID` goes right after its `##TITLE`.
+fn with_block_id(block: String, id: usize) -> String {
+    let (title, rest) = block.split_once('\n').unwrap_or((&block, ""));
+    format!("{title}\n##BLOCK_ID={id}\n{rest}")
+}
+
 /// Write `row` as `<tag or label>_<YYYYMMDD-HHMMSS>.jdx` in its workspace folder.
-pub fn write_capture(conn: &Connection, root: &Path, row: &CaptureRow) -> Result<PathBuf, String> {
+///
+/// With `parts`, the file is a JCAMP-DX compound file (`##DATA TYPE=LINK`): the
+/// processed spectrum is block 1, so a reader that only takes the first block
+/// still gets it, and each part follows as its own block.
+pub fn write_capture(conn: &Connection, root: &Path, row: &CaptureRow, units: &str, parts: &[Part]) -> Result<PathBuf, String> {
     let (ws_name, operator): (String, Option<String>) = conn
         .query_row("SELECT name, operator FROM sessions WHERE id=?1", [&row.session_id], |r| Ok((r.get(0)?, r.get(1)?)))
         .map_err(|e| format!("workspace not found: {e}"))?;
@@ -81,20 +105,35 @@ pub fn write_capture(conn: &Connection, root: &Path, row: &CaptureRow) -> Result
 
     let p: Value = serde_json::from_str(&row.params_json).unwrap_or(Value::Null);
     let mode = p["mode"].as_str().unwrap_or("intensity");
-    let y_units = if mode == "absorbance" { "ABSORBANCE" } else { "ARBITRARY UNITS" };
-    let mut meta = vec![
+    let common = vec![
         ("OWNER", operator.unwrap_or_default()),
         ("LONGDATE", when.format("%Y/%m/%d %H:%M:%S%:z").to_string()),
         ("$WORKSPACE", ws_name),
         ("$SAMPLE TAG", row.tag.clone()),
-        ("$MODE", mode.to_string()),
     ];
+    let mut meta = common.clone();
+    meta.push(("$MODE", mode.to_string()));
+    // What the numbers are: counts, counts_d (dark-subtracted), ratio or abs.
+    meta.push(("$UNITS", units.to_string()));
     if let Some(v) = p["integration"].as_u64() { meta.push(("$INTEGRATION TIME MS", v.to_string())); }
     if let Some(v) = p["averaging"].as_u64()   { meta.push(("$AVERAGES", v.to_string())); }
 
     // ponytail: xs are detector pixel indices until a wavelength calibration
     // exists (#7, #13); switch to NANOMETERS when the axis comes from one.
-    let text = jcamp(&label, &meta, "PIXEL", y_units, &row.xs, &row.ys);
+    let main = jcamp(&label, &meta, "PIXEL", y_units(units), &row.xs, &row.ys);
+    let text = if parts.is_empty() { main } else {
+        let mut s = format!("##TITLE={label}\n##JCAMP-DX=5.01\n##DATA TYPE=LINK\n##BLOCKS={}\n", parts.len() + 1);
+        s.push_str(&with_block_id(main, 1));
+        for (i, part) in parts.iter().enumerate() {
+            let mut m = common.clone();
+            m.push(("$UNITS", "counts".to_string()));
+            m.push(("$INTEGRATION TIME MS", part.integration_ms.to_string()));
+            m.push(("$AVERAGES", part.averages.to_string()));
+            s.push_str(&with_block_id(jcamp(part.title, &m, "PIXEL", "ARBITRARY UNITS", &row.xs, part.ys), i + 2));
+        }
+        s.push_str("##END=\n");
+        s
+    };
     std::fs::write(&path, text).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
     Ok(path)
 }
@@ -128,7 +167,7 @@ mod tests {
             params_json: r#"{"mode":"absorbance","integration":25,"averaging":16}"#.into(),
             xs: vec![0.0, 1.0, 2.0], ys: vec![0.5, 0.25, -0.125], color: None, position: None, file_path: None,
         };
-        let path = write_capture(&conn, dir.path(), &row).unwrap();
+        let path = write_capture(&conn, dir.path(), &row, "abs", &[]).unwrap();
         assert!(path.starts_with(dir.path().join("soil-p-batch-4")));
         assert!(path.file_name().unwrap().to_str().unwrap().starts_with("soil-p-014_"));
 
@@ -143,8 +182,17 @@ mod tests {
         assert_eq!(pts, vec![(0.0, 0.5), (1.0, 0.25), (2.0, -0.125)]);
 
         // A second capture in the same second gets a distinct name.
-        let again = write_capture(&conn, dir.path(), &CaptureRow { id: "c2zzzzzz".into(), ..row }).unwrap();
+        let again = write_capture(&conn, dir.path(), &CaptureRow { id: "c2zzzzzz".into(), ..row.clone() }, "abs", &[]).unwrap();
         assert_ne!(again, path);
+
+        // With parts it is a compound file: processed first, then each part as its own block.
+        let dark = [9.0, 8.0, 7.0];
+        let parts = [Part { title: "dark", ys: &dark, integration_ms: 25, averages: 4 }];
+        let both = write_capture(&conn, dir.path(), &CaptureRow { id: "c3yyyyyy".into(), ..row }, "abs", &parts).unwrap();
+        let text = std::fs::read_to_string(&both).unwrap();
+        assert!(text.starts_with("##TITLE=Capture · #01\n##JCAMP-DX=5.01\n##DATA TYPE=LINK\n##BLOCKS=2\n##TITLE=Capture · #01\n##BLOCK_ID=1\n"));
+        assert!(text.contains("##TITLE=dark\n##BLOCK_ID=2\n") && text.contains("2, 7\n##END=\n##END=\n"));
+        assert_eq!(text.matches("##END=").count(), 3);
 
         trash(&path).unwrap();
         assert!(!path.exists() && path.parent().unwrap().join(".trash").join(path.file_name().unwrap()).exists());

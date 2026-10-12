@@ -287,17 +287,18 @@ fn capture(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<V
     };
     // A capture is as taggable as a streamed frame.
     *lock(&state.last_raw)? = Some(CalFrame { ys: frame.ys.clone(), integration_ms: frame.integration_ms, averages: params.averaging, requested_ms: params.integration });
+    let raw = frame.ys.clone();
     let frame = process::process(frame, &*lock(&state.calibration)?);
 
     let workspace = lock(&state.settings)?.workspace.clone();
     let Some(session_id) = workspace else {
         return Ok(json!({ "frame": frame, "saved": null }));
     };
-    let saved = save_capture(state, &session_id, &frame, &params, args).map_err(internal)?;
+    let saved = save_capture(state, &session_id, &frame, &raw, &params, args).map_err(internal)?;
     Ok(json!({ "frame": frame, "saved": saved }))
 }
 
-fn save_capture(state: &AppState, session_id: &str, frame: &SpectrumFrame, params: &AcqParams, args: &Value) -> Result<Value, String> {
+fn save_capture(state: &AppState, session_id: &str, frame: &SpectrumFrame, raw: &[f32], params: &AcqParams, args: &Value) -> Result<Value, String> {
     let conn = db::open(&state.db_path).map_err(|e| e.to_string())?;
     let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
     let label = match s("label") {
@@ -316,7 +317,21 @@ fn save_capture(state: &AppState, session_id: &str, frame: &SpectrumFrame, param
     };
     db::insert_capture(&conn, &row).map_err(|e| e.to_string())?;
     // The row is in; a failed file write is reported, never fatal.
-    let file_error = match files::write_capture(&conn, &state.spectra_root, &row) {
+    // The file carries what the spectrum was computed from: the raw sample when
+    // processing changed it, and whichever dark and reference are held.
+    let cal = state.calibration.lock().map_err(|e| e.to_string())?;
+    let mut parts = Vec::new();
+    if frame.units != "counts" {
+        parts.push(files::Part { title: "raw sample", ys: raw, integration_ms: frame.integration_ms, averages: params.averaging });
+    }
+    for (title, f) in [("dark", &cal.dark), ("reference", &cal.reference)] {
+        if let Some(f) = f.as_ref().filter(|f| f.ys.len() == raw.len()) {
+            parts.push(files::Part { title, ys: &f.ys, integration_ms: f.integration_ms, averages: f.averages });
+        }
+    }
+    let written = files::write_capture(&conn, &state.spectra_root, &row, &frame.units, &parts);
+    drop(cal);
+    let file_error = match written {
         Ok(path) => {
             let path = path.to_string_lossy().to_string();
             db::set_capture_file(&conn, &row.id, &path).map_err(|e| e.to_string())?;
@@ -477,6 +492,9 @@ mod tests {
         let peak = out["frame"]["peak"].as_f64().unwrap();
         assert!(peak > 0.0 && peak <= 1.0, "peak {peak} outside the full scale");
         assert!(file.contains("neon-check") && std::path::Path::new(file).exists());
+        // Absorbance with a dark and a reference: processed, raw, dark, reference in one compound file.
+        let jdx = std::fs::read_to_string(file).unwrap();
+        assert!(jdx.contains("##DATA TYPE=LINK\n##BLOCKS=4\n") && jdx.contains("##TITLE=reference\n##BLOCK_ID=4\n"));
         assert_eq!(db::count_captures(&conn, "s1").unwrap(), 1);
         assert!(sink.0.lock().unwrap().iter().any(|e| e == "capture-progress"));
 

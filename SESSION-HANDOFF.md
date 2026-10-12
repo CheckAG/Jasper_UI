@@ -1,81 +1,71 @@
 # Session handoff
 
-Updated 2026-10-06. Refresh with `/handoff` at the end of every working session.
-`PLAN.md` says what is planned; this says what happened.
+Updated 2026-10-12. Refresh with `/handoff` at the end of every working session.
+`docs/PLAN-migration.md` says what is planned for Phase F; this says what happened.
 
 ## Now
 
-**Guard the stream restart in `src/workspaces/instrument/InstrumentWorkspace.tsx:36`.** After a
-dark/reference capture it calls `ipc.startAcquisition(params)` without checking `paused`. Since
-`6647bdd` Live is off by default, so this is now the *normal* path, not an edge case: tag a dark
-right after connecting and the device starts scanning while the button still reads `⏸ Paused`.
-`App.tsx:44` drops the frames, so nothing shows — the device just runs unseen. One-line guard
-(`if (key !== 'xcal' && !useAcqStore.getState().paused)`), then verify on the board.
-
-After that, Phase E has three issues left (see `feature_list.json`): **#14 · E9** CI and
-**#13 · E8** x-axis from stored calibration need no hardware; **#7 · E5** Legendre neon
-calibration is blocked on a lamp. `/new-branch <issue>` off `origin/master`.
+**Pick the next Phase F step** on `feature/migration`: finish F6 (settings profiles, recent sessions, burst
+capture, auto-reconnect on replug) or start F5 (WebSocket on `127.0.0.1:8765` + Python client). Ask the
+user which. See `docs/PLAN-migration.md`. Push `feature/migration` first. It is 3 commits ahead of origin.
 
 ## State
 
-**Phase E is 9 of 12.** The app drives the real board end to end: discover by probing, connect,
-stream, freeze, capture with averaging, tag a dark and a reference, see absorbance.
+**Phase F (Toolbox design adoption) is on `feature/migration`: F1–F4 done, F6 partly done, F5 not
+started.** Phase E stays at 9 of 12 (`feature_list.json`; it has no Phase F entries).
 
-Verified on serial `380B1C3537323731`, firmware `0.1`, most recently 2026-10-06. Hardware tests
-are `#[ignore]`d: `JASPER_PORT=/dev/ttyACM0 cargo test --test tcd1304_sim -- --ignored --nocapture`
-
-Done and verified on the board by the user, 2026-10-06:
-- `80a7769` — the stream now starts when a device connects (previously unverified). Confirmed by
-  observation: on first connect Live started on its own — which is what prompted the next change.
-- `01809f6` — Integration Time is a number input in ms (`src/workspaces/acquire/ActionShelf.tsx:57`),
-  not a slider. Commits on blur/Enter, clamped to the device's `integMinMs`–`integMaxMs`. Keyed on
-  `params.integration`, so a device-side clamp written back by `App.tsx:57` re-renders the field.
-- `6647bdd` — Live is off until the user turns it on. `paused` defaults to `true`
-  (`src/store/acqStore.ts:52`) and `refreshInstrument` sets it back to `true` whenever the
-  connected serial changes (`src/store/acqStore.ts:107`) — connect, disconnect, or replug.
-
-**Every synthetic data path is gone.** `tools/tcd1304-sim.py` is the no-hardware path, so UI work
-without the board needs the simulator running, not just `npm run tauri dev`.
+**Everything committed on `feature/migration` was verified on the real board by the user, 2026-10-12**
+(serial `380B1C3537323731`):
+- `86f439f` F1 light/dark theme switch.
+- `25f5009` F3 single screen with a menu bar (the workspace rail is gone).
+- `9c15e29` F2 every capture saved as a SQLite row plus a `.jdx` file in its workspace folder.
+- `dd52567` F4 the GUI goes through one Device API (`src-tauri/src/api/mod.rs`) on protocol v1.
+- `e1a3dcf` Live is the first toolbar button (`src/workspaces/acquire/ModeStrip.tsx`), shortcut **L**
+  (was P). The sample tag lives in `acqStore.sampleTag`, so Space and menu captures keep it too.
+  Capture stays in the left column (`ActionShelf.tsx`). The user tried moving it into the toolbar as the
+  mockup has it, then asked for it back.
+- F6 commit: a saturation banner at ≥98% of full scale (`SATURATION_WARN`,
+  `src/components/layout/StatusBar.tsx:8`). `SpectrumFrame.peak` is the brightest raw pixel / `max_intensity`,
+  and 1.0 if any raw sample hits the ADC limit. A stale-dark banner (`reference.dark_stale`) shows for
+  5 s each time the dark goes stale (the user asked for that). The status bar shows fps and a peak meter.
+- Compound `.jdx` commit: a capture's file is a JCAMP-DX compound file (`##DATA TYPE=LINK`). Block 1
+  is the processed spectrum with `##$UNITS` (counts / counts_d / ratio / abs), then the raw sample
+  (only when processing changed it), dark and reference, each with integration and averages
+  (`src-tauri/src/storage/files.rs`, `save_capture` in `api/mod.rs`). With nothing extra it is a plain
+  single-block file. The user picked this over separate dark/reference files.
 
 **Half-built:**
-- The `paused` guard above.
-- X-axis calibration has no backend. `calibrate_xcal` returns `Err`, the Instrument panel's X-cal
-  row can never reach "done", and `xs` is the pixel index. That is #7.
-- `src/workspaces/chemometrics/ChemometricsWorkspace.tsx:258` still holds a hardcoded
-  Maize/Wheat/Soil confusion matrix, behind the disabled workspace flag.
-- `eslint` does not run — `hermes-parser` fails to load. #14 should fix or drop it.
+- F2 gaps: the data folder has no in-app setting (`~/JASPER` or `JASPER_DATA_DIR`), and Export does not copy
+  `.jdx` files. Dark/reference live in memory only (lost on restart) and carry no timestamp.
+- F4 gaps: no `subscribe` (live frames still use the `spectrum-frame` event); firmware update and x-cal
+  have their own Tauri commands outside the API.
+- `process()` still applies a dark taken at another integration. The banner warns, but the maths does not refuse.
+- X-axis calibration has no backend: `calibrate_xcal` returns `Err`, and `xs` is the pixel index (#7, #13).
+- `eslint` does not run: `hermes-parser` fails to load (`Cannot find module './generated/ParserVisitorKeys'`).
 
-**Untouched:** Analyze and Chemometrics (hidden behind `ENABLED_WORKSPACES` in
-`src/lib/features.ts`), and everything in the Python sidecar.
+**Untouched:** Analyze and Chemometrics (compiled but unreachable), the Python sidecar. The sidecar's
+`write_jcamp_multi` (`python-sidecar/jasper/jcamp.py:52`) omits `##BLOCK_ID`. It is unused, so it is not fixed.
 
 ## Uncommitted work
 
-Clean. Branch `fix/11_live-view-start` (renamed from `enhancement`, tracks issue #11) is pushed,
-six commits ahead of `origin/master`: `80a7769`, `0a0c19d`, `53549d6`, `01809f6`, `6647bdd`, and
-this handoff. **No PR yet** — open it by hand (read-only token).
-
-Stale local branches: `UI-enhancement` (remote deleted), `UI_theming`, `protocol_simulation`.
-
-`01809f6` and `6647bdd` lack the `Claude-Session:` trailer the `/commit` skill asks for (the
-session URL was not available) and say "Claude Opus 5.5" in the co-author line.
+Clean once the F6 and compound-`.jdx` commits land (this handoff goes in the second).
 
 ## Learned this session
 
-- **Any control that restarts the stream must not fire per keystroke.** `App.tsx:82` re-runs
-  `startAcquisition` on every `params.integration` change, so a controlled `<input type=number>`
-  would send 1, 10, 100 on the way to typing 1000 — each below the device floor. Hence the
-  uncontrolled input committing on blur.
-- **Auto-starting Live on connect was the wrong default, not just a fixed bug.** `80a7769` made the
-  stream start correctly on connect; the user then decided streaming should be opt-in. Any code
-  that restarts acquisition must now respect `paused`, because "connected" no longer implies "live".
-- `run.sh` exiting with code 0 and no log lines means the window was closed — there is no
-  shutdown logging, so that is indistinguishable from a silent quit. Ask before assuming either.
-- The GLib `GTlsClientConnectionGnutls ... invalid property id` warnings at startup are noise.
+- **Saturation is measured against the device's `max_intensity`, not 65 535.** The video is inverted
+  (`to_intensity = max_intensity - raw`), so the processed full scale is `max_intensity` (32 767 from
+  METADATA).
+- **Compare a dark with the requested integration, not the applied one.** The first stale-dark check
+  compared `frame.integration_ms` (what the device applied) with the setting (what was asked for), so on
+  the board the banner never cleared. `CalFrame.requested_ms` fixes that.
+- **Nothing documents whether SpectraGryph reads JCAMP compound files.** Its changelog is silent. The
+  user chose compound files anyway and confirmed the result works on the board.
+- The CSV `# key: value` header listed under F6 already shipped with F2.
 
 ## Blocked / needs a human
 
-- **A neon or mercury-argon lamp** for #7. Nothing else in the phase is blocked.
-- **Frontend changes behind a Connect click need someone at the machine** — no automation here
-  drives the Tauri WebKitGTK window.
-- **The GitHub token is read-only** (`403 Resource not accessible by personal access token` on
-  issues and PRs) and `gh` is not installed, so issues and PRs are created by hand.
+- **A neon or mercury-argon lamp** for #7 (wavelength calibration).
+- **Anything behind a Connect click needs someone at the machine.** Nothing here drives the Tauri
+  WebKitGTK window.
+- **The GitHub token is read-only** (`403 Resource not accessible by personal access token` on issues
+  and PRs) and `gh` is not installed, so issues and PRs are created by hand.
