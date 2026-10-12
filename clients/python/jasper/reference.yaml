@@ -1,0 +1,76 @@
+# jasper-reference.yaml — what an agent needs to know about this instrument.
+# Layout from JASPER_Device_API.md (CheckAg proposal until the MHS schema is
+# published). Sensor-specific numbers are not written here: they come from the
+# connected unit's device.info, which the MCP server appends below as
+# live_device_info when the app is running.
+reference_version: 0.1
+device:
+  model: JASPER spectrometer   # the unit's own model is device.info.model
+  maker: CheckAg Private Limited
+  class: spectrometer
+  description: >
+    Fibre-coupled grating spectrometer. Light is dispersed by a grating onto a
+    linear image sensor and read out as one value per pixel. JASPER (the desktop
+    app) owns the instrument; agents reach it only through the Device API.
+  interfaces:
+    data: USB CDC-ACM, protocol v1
+  physical:
+    detector: >
+      linear image sensor, named in device.info.sensor (today a TCD1304 CCD).
+      Pixel count is device.info.pixels.
+    x_axis: detector pixel index; there is no wavelength calibration yet, so no nm values exist
+    full_scale_counts: device.info.max_intensity   # all saturation figures are fractions of this
+    light_source: none
+
+variables:   # read with jasper_read; this server cannot write
+  - name: device.state
+    description: disconnected, idle or acquiring
+  - name: device.info
+    description: Model, serial, firmware, pixel count and integration limits, as the device reports them
+  - name: device.diagnostics
+    description: Recent connects, errors and timeouts
+  - name: acquisition.integration_time_ms
+    description: How long the detector collects light per scan. Longer gives more signal and more risk of saturation.
+    unit: ms
+    min: device.info.integ_min_ms
+    max: device.info.integ_max_ms
+  - name: acquisition.averages
+    description: Scans averaged per spectrum. Higher lowers noise and takes longer.
+    min: 1
+    max: 64
+  - name: acquisition.live
+    description: True while the live stream runs
+  - name: reference.dark
+    description: True when a dark spectrum is held
+  - name: reference.dark_stale
+    description: True when the held dark was taken at other integration or averaging than now; take a new one
+  - name: reference.white
+    description: True when a reference (blank or white standard) is held
+  - name: processing.mode
+    description: absorbance when both a dark and a reference are held, otherwise intensity
+  - name: workspace.active
+    description: Id of the workspace captures are filed in
+
+measures:
+  - name: spectrum
+    description: >
+      Counts per pixel, dark-subtracted when a dark is held, absorbance
+      (-log10 of (S-D)/(R-D), capped at 4) when a dark and a reference are held.
+      Each frame carries peak: the brightest raw pixel as a fraction of full scale.
+  - name: saturation
+    description: A peak of 0.98 or more means the spectrum is saturated and not valid; shorten integration.
+
+files:
+  - Each capture is saved in the workspace folder (~/JASPER/<workspace>/) as a .jdx JCAMP-DX file.
+    With a dark or reference held it is a compound file - block 1 processed, then raw sample, dark, reference.
+
+safety:
+  privileged_actions:
+    - firmware upgrade (GUI only; an agent cannot start or approve it)
+  enforced_by: [JASPER app]
+
+usage_notes:
+  - Take a new dark after any change to integration time or averaging.
+  - Keep the brightest peak below about 85% of full scale.
+  - Absorbance needs both a dark and a reference.
+  - This MCP server is read-only. Settings, captures, darks and references are made by a person in the app.
