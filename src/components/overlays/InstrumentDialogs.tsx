@@ -179,7 +179,7 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
         <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
           {connected
             ? 'No other instrument found.'
-            : 'No instrument found. Every serial port was probed and none answered as a TCD1304 — check the cable, or enter a port below.'}
+            : 'No instrument found. Every serial port was probed and none answered as a supported spectrometer — check the cable, or enter a port below.'}
         </span>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

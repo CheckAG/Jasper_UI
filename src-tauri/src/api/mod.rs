@@ -37,6 +37,11 @@ impl Default for Settings {
 }
 
 pub const AVERAGES_MAX: u32 = 64;
+/// Fractions of the device's full scale (`DeviceMetadata.max_intensity`), so
+/// they hold for any sensor. SATURATION_WARN matches the GUI's banner.
+const SATURATION_WARN: f32 = 0.98;
+/// A dark whose mean is this high has light on it. A TCD1304 dark sits near 10%.
+const DARK_WARN: f32 = 0.15;
 
 /// Who made a call. Scripts and agents get errors where the GUI gets clamping.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
@@ -204,7 +209,7 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, command: &str, args: Value
             let mine = lock(&state.driver)?.device_list();
             let connected = mine.first().map(|d| d.id.clone());
             let mut all = mine;
-            all.extend(crate::instrument::tcd1304::discover(connected.as_deref()));
+            all.extend(crate::instrument::discover(connected.as_deref()));
             Ok(json!(all))
         }
         "connect" => {
@@ -238,10 +243,7 @@ type DriverSlot = std::sync::Mutex<Box<dyn SpectrumDriver + Send>>;
 pub fn connect_port(driver: &DriverSlot, port: &str) -> Result<(), String> {
     let mut slot = driver.lock().map_err(|e| e.to_string())?;
     slot.disconnect();
-    let mut next: Box<dyn SpectrumDriver + Send> =
-        Box::new(crate::instrument::tcd1304::Tcd1304Driver::new(port.to_string()));
-    next.connect(port)?;
-    *slot = next;
+    *slot = crate::instrument::connect(port)?;
     Ok(())
 }
 
@@ -260,11 +262,13 @@ fn tag_last_frame(state: &AppState, which: &str) -> Result<Value, ApiError> {
     let frame = lock(&state.last_raw)?.as_ref()
         .map(|f| CalFrame { ys: f.ys.clone(), integration_ms: f.integration_ms, averages: f.averages, requested_ms: f.requested_ms })
         .ok_or_else(|| ApiError::new(4020, "PRECONDITION_FAILED", "No spectrum on the plot yet — start the stream first."))?;
+    // Judged against the connected sensor's own full scale, not fixed counts.
+    let full = lock(&state.driver)?.device_metadata().map_or(f32::MAX, |m| m.max_intensity.max(1) as f32);
     let mean = frame.ys.iter().sum::<f32>() / frame.ys.len().max(1) as f32;
     let max = frame.ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let warn = match which {
-        "dark" if mean > 5000.0 => Some(format!("dark level high ({mean:.0} counts) — is the light off?")),
-        "reference" if max >= 55_000.0 => Some("reference is near saturation — reduce integration".to_string()),
+        "dark" if mean > DARK_WARN * full => Some(format!("dark level high ({mean:.0} counts, {:.0}% of full scale) — is the light off?", 100.0 * mean / full)),
+        "reference" if max >= SATURATION_WARN * full => Some("reference is near saturation — reduce integration".to_string()),
         _ => None,
     };
     let mut cal = lock(&state.calibration)?;

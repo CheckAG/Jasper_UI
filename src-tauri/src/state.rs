@@ -1,6 +1,5 @@
 use std::sync::{Mutex, atomic::{AtomicBool, AtomicU64, Ordering}};
 use std::sync::Arc;
-use crate::instrument::tcd1304::Tcd1304Driver;
 use crate::instrument::driver::SpectrumDriver;
 use crate::commands::sidecar::SidecarHolder;
 
@@ -78,19 +77,18 @@ impl AppState {
         // already exactly that: it lists nothing, reports not connected, and
         // refuses every operation — so there is no separate "no device" type,
         // and nothing synthesises a spectrum to fill the gap.
-        let mut driver = Tcd1304Driver::new(String::new());
+        let mut driver = crate::instrument::disconnected();
         if let Ok(port) = std::env::var("JASPER_PORT") {
             let port = port.trim().to_string();
             if !port.is_empty() {
-                match driver.connect(&port) {
-                    Ok(()) => eprintln!("[AppState] TCD1304 connected on {port}"),
+                match crate::instrument::connect(&port) {
+                    Ok(d) => { driver = d; eprintln!("[AppState] instrument connected on {port}") }
                     // Not fatal: the workspace can connect once the device is
                     // there, and refusing to launch over a missing cable is worse.
                     Err(e) => eprintln!("[AppState] JASPER_PORT={port} did not connect: {e}"),
                 }
             }
         }
-        let driver: Box<dyn SpectrumDriver + Send> = Box::new(driver);
 
         Self {
             driver:         Arc::new(Mutex::new(driver)),

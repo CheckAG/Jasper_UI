@@ -133,6 +133,9 @@ pub trait SpectrumDriver: Send {
     fn device_list(&self) -> Vec<DeviceInfo>;
     fn connect(&mut self, device_id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
+    /// One frame, oriented so more light reads higher (flip inverted video
+    /// here, in the driver), `units` "counts", and `peak` filled in against
+    /// the sensor's own full scale. Everything downstream relies on that.
     fn scan(&self, params: &AcqParams) -> Result<SpectrumFrame, String>;
     fn calibrate_dark(&self, params: &AcqParams) -> Result<CalResult, String>;
     fn calibrate_reference(&self, params: &AcqParams) -> Result<CalResult, String>;
