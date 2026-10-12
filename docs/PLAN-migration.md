@@ -108,6 +108,10 @@ like the GUI's. Audit log: `<app data>/api-audit.jsonl`, writes and commands onl
 - Accept: a Python script captures the same spectrum the GUI shows; both appear in the audit log with different callers.
 
 ### F6 · Stage-1 gaps
+**Partly built, verified on the board 2026-10-12:** saturation banner + peak meter (`peak` on every
+frame, fraction of the device's full scale on the raw frame; 1.0 when a pixel hits the ADC limit), stale-dark
+banner (`reference.dark_stale`, shown 5 s each time the dark goes stale), fps + peak in the status bar (cursor readout already there). The CSV header
+shipped with F2. Still open: settings profiles, recent sessions, burst capture, auto-reconnect.
 - Saturation flag **on the processed scale** (`max - raw`, video is inverted): peak % of the measured swing, banner at ≥98%. The docs' "98% of 65 535" does not apply to this board.
 - Stale-dark warning when integration or averaging changed since the dark.
 - Status bar fps + peak meter + cursor readout.

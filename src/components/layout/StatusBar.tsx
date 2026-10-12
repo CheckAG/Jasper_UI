@@ -3,8 +3,13 @@ import { useAcqStore } from '../../store/acqStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { ipc } from '../../lib/ipc';
 
+/** Peak at or above this fraction of full scale warns of saturation (plan F6: 98%).
+ *  ponytail: one fixed threshold; if the CCD visibly flattens below it on the board, lower it here. */
+export const SATURATION_WARN = 0.98;
+
 export function StatusBar() {
-  const { params, cursor } = useAcqStore();
+  const { params, cursor, fps, paused } = useAcqStore();
+  const peak = useAcqStore(s => s.liveSpectrum?.peak);
   // Where this workspace's .jdx files go.
   const name = useSessionStore(s => s.activeSession()?.name);
   const [folder, setFolder] = useState<string | null>(null);
@@ -34,6 +39,24 @@ export function StatusBar() {
         </>
       ) : (
         <span>Hover spectrum for readout</span>
+      )}
+      {!paused && fps > 0 && (
+        <span>
+          <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>fps</span>
+          <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{fps.toFixed(1)}</b>
+        </span>
+      )}
+      {peak !== undefined && (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          title="Brightest pixel as a share of the detector's full scale">
+          <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Peak</span>
+          <span style={{ width: 60, height: 6, borderRadius: 3, background: 'var(--line)', overflow: 'hidden' }}>
+            <span style={{ display: 'block', height: '100%', width: `${Math.min(100, peak * 100)}%`,
+              background: peak >= SATURATION_WARN ? 'var(--accent-warn)' : 'var(--signal)' }} />
+          </span>
+          <b style={{ color: peak >= SATURATION_WARN ? 'var(--accent-warn)' : 'var(--ink)', fontWeight: 500 }}>
+            {Math.round(peak * 100)}%</b>
+        </span>
       )}
       <span style={{ marginLeft: 'auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
         title={folder ?? undefined}>{folder}</span>

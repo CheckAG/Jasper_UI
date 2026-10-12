@@ -58,7 +58,7 @@ function mapManifest(nodes: ManifestNodeDTO[]): PipelineNode[] {
 
 // Rust SpectrumFrame → TypeScript Spectrum
 function frameToSpectrum(
-  frame: { xs: number[]; ys: number[]; timestamp: number; units?: string },
+  frame: { xs: number[]; ys: number[]; timestamp: number; units?: string; peak?: number },
   params: AcqParams,
 ): Spectrum {
   return {
@@ -67,6 +67,7 @@ function frameToSpectrum(
     timestamp: frame.timestamp,
     params,
     units: frame.units,
+    peak: frame.peak,
   };
 }
 
@@ -93,11 +94,11 @@ export const deviceApi = {
     callApi<T>({ method: 'invoke', params: { command, args } }),
 };
 
-const INSTRUMENT_VARS = ['device.info', 'reference.dark', 'reference.white', 'acquisition.live',
+const INSTRUMENT_VARS = ['device.info', 'reference.dark', 'reference.dark_stale', 'reference.white', 'acquisition.live',
   'acquisition.integration_time_ms', 'acquisition.averages', 'processing.mode'];
 
 export interface InstrumentState {
-  meta: DeviceMetadata | null; dark: boolean; reference: boolean; live: boolean;
+  meta: DeviceMetadata | null; dark: boolean; darkStale: boolean; reference: boolean; live: boolean;
   integration: number; averaging: number; mode: AcqParams['mode'];
 }
 
@@ -169,13 +170,14 @@ export const ipc = {
     ? deviceApi.read<Record<string, unknown>>(INSTRUMENT_VARS).then(v => ({
         meta: metaFromDTO(v['device.info'] as DeviceMetadataDTO | null),
         dark: v['reference.dark'] as boolean,
+        darkStale: v['reference.dark_stale'] as boolean,
         reference: v['reference.white'] as boolean,
         live: v['acquisition.live'] as boolean,
         integration: v['acquisition.integration_time_ms'] as number,
         averaging: v['acquisition.averages'] as number,
         mode: v['processing.mode'] as AcqParams['mode'],
       }))
-    : Promise.resolve({ meta: null, dark: false, reference: false, live: false,
+    : Promise.resolve({ meta: null, dark: false, darkStale: false, reference: false, live: false,
         integration: 120, averaging: 4, mode: 'intensity' }),
 
   /** Set an acquisition setting; resolves with the value the backend applied
@@ -541,6 +543,7 @@ export const ipc = {
         ys: new Float32Array(event.payload.ys),
         timestamp: event.payload.timestamp,
         units: event.payload.units,
+        peak: event.payload.peak,
         // Only `mode` and the applied integration matter downstream —
         // LiveSpectrum uses store params for the rest and discards frames whose
         // mode no longer matches the UI.

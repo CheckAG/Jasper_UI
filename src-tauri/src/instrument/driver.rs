@@ -49,6 +49,11 @@ pub struct SpectrumFrame {
     /// range, so these differ whenever the request was out of bounds.
     pub integration_ms: u32,
     pub timestamp: u64,
+    /// Brightest pixel as a fraction of the device's full scale, measured on
+    /// the raw frame before any dark/reference maths; 1.0 when a pixel hit the
+    /// ADC limit. Drives the saturation warning.
+    #[serde(default)]
+    pub peak: f32,
 }
 
 /// One instrument the host can see. Produced by probing a port, so every field

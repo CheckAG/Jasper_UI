@@ -32,6 +32,8 @@ export interface Spectrum {
    *  "counts" raw · "counts_d" dark-subtracted · "ratio" T/R · "abs" absorbance.
    *  Empty/undefined → mock-styled data shaped for params.mode. */
   units?:    string;
+  /** Brightest raw pixel as a fraction of the device's full scale (driver.rs `peak`). */
+  peak?:     number;
 }
 
 // --- Captured spectrum ---

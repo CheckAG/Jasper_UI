@@ -482,6 +482,11 @@ impl SpectrumDriver for Tcd1304Driver {
                 .map(|&raw| to_intensity(raw, max_intensity))
                 .collect();
 
+            // Peak on the inverted scale against the device's full scale. A raw
+            // sample at the ADC limit counts as saturated whatever the scale says.
+            let peak = if samples.iter().any(|&raw| is_saturated(raw, max_intensity)) { 1.0 }
+                else { ys.iter().cloned().fold(0.0, f32::max) / max_intensity.max(1) as f32 };
+
             Ok(SpectrumFrame {
                 // Pixel index until a wavelength calibration exists (E5). Honest
                 // beats a fabricated nm axis.
@@ -491,6 +496,7 @@ impl SpectrumDriver for Tcd1304Driver {
                 units: "counts".to_string(),
                 integration_ms: applied,
                 timestamp: now_ms(),
+                peak,
             })
         })
     }

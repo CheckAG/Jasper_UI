@@ -16,6 +16,10 @@ interface AcqStore {
   deviceMeta: DeviceMetadata | null;
   /** Which calibration frames the backend actually holds. */
   calHeld: { dark: boolean; reference: boolean };
+  /** The held dark was taken at other integration/averaging than now. */
+  darkStale: boolean;
+  /** Live frames per second, smoothed; 0 when not streaming. */
+  fps: number;
   /** Scan-by-scan progress of a capture in flight; null when idle. */
   captureProgress: { done: number; total: number } | null;
   /** The dark or reference being taken or discarded right now. */
@@ -62,6 +66,8 @@ export const useAcqStore = create<AcqStore>()(
     liveSpectrum: null,
     deviceMeta:   null,
     calHeld:      { dark: false, reference: false },
+    darkStale:    false,
+    fps:          0,
     captureProgress: null,
     calBusy:      null,
     sampleTag:    '',
@@ -90,6 +96,7 @@ export const useAcqStore = create<AcqStore>()(
         const applied = await ipc.writeSetting(
           key === 'integration' ? 'acquisition.integration_time_ms' : 'acquisition.averages', value);
         set((s) => { s.params[key] = Number(applied); });
+        get().refreshInstrument();   // stale-dark and friends follow at once, not on the next poll
       } catch (e) {
         useUIStore.getState().pushToast(String(e), 'error');
       }
@@ -170,8 +177,10 @@ export const useAcqStore = create<AcqStore>()(
         if (st.meta?.serial !== s.deviceMeta?.serial) s.liveSpectrum = null;
         s.deviceMeta = st.meta;
         s.calHeld = { dark: st.dark, reference: st.reference };
+        s.darkStale = st.darkStale;
         // Everything below is owned by the backend; the store only mirrors it.
         s.paused = !st.live;
+        if (!st.live) s.fps = 0;
         s.params.integration = st.integration;
         s.params.averaging = st.averaging;
         s.params.mode = st.mode;
@@ -179,6 +188,11 @@ export const useAcqStore = create<AcqStore>()(
     },
 
     setLiveSpectrum: (spectrum) =>
-      set((s) => { s.liveSpectrum = spectrum; }),
+      set((s) => {
+        // Rate from the device timestamps, smoothed so the readout does not flicker.
+        const dt = s.liveSpectrum ? spectrum.timestamp - s.liveSpectrum.timestamp : 0;
+        if (dt > 0) s.fps = s.fps ? 0.8 * s.fps + 0.2 * (1000 / dt) : 1000 / dt;
+        s.liveSpectrum = spectrum;
+      }),
   }))
 );

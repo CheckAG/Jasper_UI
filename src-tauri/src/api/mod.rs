@@ -132,6 +132,12 @@ fn read(state: &AppState, name: &str) -> Result<Value, ApiError> {
         "acquisition.live" => json!(state.live.load(Ordering::SeqCst)),
         "reference.dark" => json!(lock(&state.calibration)?.dark.is_some()),
         "reference.white" => json!(lock(&state.calibration)?.reference.is_some()),
+        // Held dark taken at other settings than now: it no longer cancels the offset.
+        "reference.dark_stale" => {
+            let s = lock(&state.settings)?.clone();
+            json!(lock(&state.calibration)?.dark.as_ref()
+                .is_some_and(|d| d.requested_ms != s.integration_ms || d.averages != s.averages))
+        }
         "processing.mode" => json!(mode(state)?),
         "workspace.active" => json!(lock(&state.settings)?.workspace),
         _ => return Err(ApiError::new(4004, "UNKNOWN_VARIABLE", format!("no variable {name:?}"))),
@@ -250,7 +256,7 @@ fn params(state: &AppState) -> Result<AcqParams, ApiError> {
 /// designate it — so it inherits the averaging that produced it.
 fn tag_last_frame(state: &AppState, which: &str) -> Result<Value, ApiError> {
     let frame = lock(&state.last_raw)?.as_ref()
-        .map(|f| CalFrame { ys: f.ys.clone(), integration_ms: f.integration_ms })
+        .map(|f| CalFrame { ys: f.ys.clone(), integration_ms: f.integration_ms, averages: f.averages, requested_ms: f.requested_ms })
         .ok_or_else(|| ApiError::new(4020, "PRECONDITION_FAILED", "No spectrum on the plot yet — start the stream first."))?;
     let mean = frame.ys.iter().sum::<f32>() / frame.ys.len().max(1) as f32;
     let max = frame.ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
@@ -280,7 +286,7 @@ fn capture(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<V
         }).map_err(device)?
     };
     // A capture is as taggable as a streamed frame.
-    *lock(&state.last_raw)? = Some(CalFrame { ys: frame.ys.clone(), integration_ms: frame.integration_ms });
+    *lock(&state.last_raw)? = Some(CalFrame { ys: frame.ys.clone(), integration_ms: frame.integration_ms, averages: params.averaging, requested_ms: params.integration });
     let frame = process::process(frame, &*lock(&state.calibration)?);
 
     let workspace = lock(&state.settings)?.workspace.clone();
@@ -379,7 +385,7 @@ fn start_live(state: &AppState, events: Arc<dyn Events>) -> Result<(), ApiError>
             };
             // The frame as the device gave it, before dark/reference maths, so it can be tagged.
             if let Ok(mut slot) = last_raw.lock() {
-                *slot = Some(CalFrame { ys: frame.ys.clone(), integration_ms: frame.integration_ms });
+                *slot = Some(CalFrame { ys: frame.ys.clone(), integration_ms: frame.integration_ms, averages: params.averaging, requested_ms: params.integration });
             }
             let frame = match calibration.lock() {
                 Ok(cal) => process::process(frame, &cal),
@@ -454,12 +460,22 @@ mod tests {
         let r = call(Caller::Gui, json!({"method":"read","params":{"names":["reference.dark","reference.white","processing.mode"]}})).unwrap();
         assert_eq!(r, json!({"reference.dark": true, "reference.white": true, "processing.mode": "absorbance"}));
 
+        // The dark goes stale when the settings move away from the ones it was taken at.
+        let stale = || call(Caller::Gui, json!({"method":"read","params":{"name":"reference.dark_stale"}})).unwrap();
+        assert_eq!(stale(), json!(false));
+        call(Caller::Gui, json!({"method":"write","params":{"name":"acquisition.averages","value":2}})).unwrap();
+        assert_eq!(stale(), json!(true));
+        call(Caller::Gui, json!({"method":"write","params":{"name":"acquisition.averages","value":1}})).unwrap();
+        assert_eq!(stale(), json!(false));
+
         // A script's capture is filed exactly like the GUI's: row + .jdx.
         let conn = db::open(&state.db_path).unwrap();
         conn.execute("INSERT INTO sessions (id, name, created_at) VALUES ('s1','Neon check',0)", []).unwrap();
         call(Caller::Gui, json!({"method":"write","params":{"name":"workspace.active","value":"s1"}})).unwrap();
         let out = call(Caller::Script, json!({"method":"invoke","params":{"command":"capture","args":{"tag":"NE-01"}}})).unwrap();
         let file = out["saved"]["file"].as_str().unwrap();
+        let peak = out["frame"]["peak"].as_f64().unwrap();
+        assert!(peak > 0.0 && peak <= 1.0, "peak {peak} outside the full scale");
         assert!(file.contains("neon-check") && std::path::Path::new(file).exists());
         assert_eq!(db::count_captures(&conn, "s1").unwrap(), 1);
         assert!(sink.0.lock().unwrap().iter().any(|e| e == "capture-progress"));
