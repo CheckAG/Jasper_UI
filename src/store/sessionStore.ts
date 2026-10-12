@@ -31,8 +31,8 @@ interface SessionStore {
 
   activeSession:    () => Session | undefined;
   setActiveSession: (id: string) => Promise<void>;
-  /** id, label and colour for the next capture in the active workspace. */
-  nextCapture:      () => { id: string; label: string; color: string };
+  /** id and colour for the next capture in the active workspace (the backend names it). */
+  nextCapture:      () => { id: string; color: string };
   /** Show a capture the backend has saved. */
   addSavedCapture:  (cap: Capture) => void;
   /** Pick up captures filed by another caller (a script, the CLI, an agent). */
@@ -130,7 +130,6 @@ export const useSessionStore = create<SessionStore>()(
       const n = get().captures.length;
       return {
         id:    makeId(),
-        label: `Capture · #${String(n + 1).padStart(2, '0')}`,
         color: PALETTE[n % PALETTE.length],
       };
     },

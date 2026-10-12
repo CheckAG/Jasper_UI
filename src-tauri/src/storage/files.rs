@@ -28,6 +28,14 @@ pub fn slug(s: &str) -> String {
     if out.is_empty() { "untitled".into() } else { out }
 }
 
+/// As `slug`, but keeps '_' so a capture named `spectra_001` keeps that name on disk.
+fn file_slug(s: &str) -> String {
+    let parts: Vec<String> = s.split('_')
+        .filter(|p| p.chars().any(|c| c.is_ascii_alphanumeric()))
+        .map(slug).collect();
+    if parts.is_empty() { "untitled".into() } else { parts.join("_") }
+}
+
 /// The folder for a workspace. Two workspaces with the same name share it —
 /// file names carry the time, so nothing is overwritten.
 pub fn workspace_dir(root: &Path, workspace_name: &str) -> PathBuf {
@@ -80,7 +88,7 @@ fn with_block_id(block: String, id: usize) -> String {
     format!("{title}\n##BLOCK_ID={id}\n{rest}")
 }
 
-/// Write `row` as `<tag or label>_<YYYYMMDD-HHMMSS>.jdx` in its workspace folder.
+/// Write `row` as `<name>_<YYYYMMDD-HHMMSS>.jdx` in its workspace folder.
 ///
 /// With `parts`, the file is a JCAMP-DX compound file (`##DATA TYPE=LINK`): the
 /// processed spectrum is block 1, so a reader that only takes the first block
@@ -96,8 +104,7 @@ pub fn write_capture(conn: &Connection, root: &Path, row: &CaptureRow, units: &s
         .ok_or("bad timestamp")?
         .with_timezone(&chrono::Local);
     let label = row.label.clone().unwrap_or_default();
-    let name = if row.tag.trim().is_empty() { &label } else { &row.tag };
-    let stem = format!("{}_{}", slug(name), when.format("%Y%m%d-%H%M%S"));
+    let stem = format!("{}_{}", file_slug(&label), when.format("%Y%m%d-%H%M%S"));
     let mut path = dir.join(format!("{stem}.jdx"));
     if path.exists() {
         path = dir.join(format!("{stem}-{}.jdx", &row.id[..row.id.len().min(6)]));
@@ -162,14 +169,15 @@ mod tests {
         let conn = super::super::db::open(dir.path().join("t.db").to_str().unwrap()).unwrap();
         conn.execute("INSERT INTO sessions (id, name, operator, created_at) VALUES ('s1','Soil P · batch 4','tony',0)", []).unwrap();
         let row = CaptureRow {
-            id: "c1abcdef".into(), session_id: "s1".into(), label: Some("Capture · #01".into()),
+            id: "c1abcdef".into(), session_id: "s1".into(), label: Some("spectra_001".into()),
             timestamp: 1_791_700_000_000, tag: "SOIL-P-014".into(),
             params_json: r#"{"mode":"absorbance","integration":25,"averaging":16}"#.into(),
             xs: vec![0.0, 1.0, 2.0], ys: vec![0.5, 0.25, -0.125], color: None, position: None, file_path: None,
         };
         let path = write_capture(&conn, dir.path(), &row, "abs", &[]).unwrap();
         assert!(path.starts_with(dir.path().join("soil-p-batch-4")));
-        assert!(path.file_name().unwrap().to_str().unwrap().starts_with("soil-p-014_"));
+        assert!(path.file_name().unwrap().to_str().unwrap().starts_with("spectra_001_"));
+        assert_eq!(file_slug("Leaf · stress_B"), "leaf-stress_b");
 
         // Read the points back: they must equal what was stored.
         let text = std::fs::read_to_string(&path).unwrap();
@@ -190,7 +198,7 @@ mod tests {
         let parts = [Part { title: "dark", ys: &dark, integration_ms: 25, averages: 4 }];
         let both = write_capture(&conn, dir.path(), &CaptureRow { id: "c3yyyyyy".into(), ..row }, "abs", &parts).unwrap();
         let text = std::fs::read_to_string(&both).unwrap();
-        assert!(text.starts_with("##TITLE=Capture · #01\n##JCAMP-DX=5.01\n##DATA TYPE=LINK\n##BLOCKS=2\n##TITLE=Capture · #01\n##BLOCK_ID=1\n"));
+        assert!(text.starts_with("##TITLE=spectra_001\n##JCAMP-DX=5.01\n##DATA TYPE=LINK\n##BLOCKS=2\n##TITLE=spectra_001\n##BLOCK_ID=1\n"));
         assert!(text.contains("##TITLE=dark\n##BLOCK_ID=2\n") && text.contains("2, 7\n##END=\n##END=\n"));
         assert_eq!(text.matches("##END=").count(), 3);
 

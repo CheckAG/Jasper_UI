@@ -42,6 +42,9 @@ interface AcqStore {
   /** Sample tag typed in the controls column; filed with every capture, however it is triggered. */
   sampleTag: string;
   setSampleTag: (t: string) => void;
+  /** Name for the next capture; empty means automatic (spectra_NNN). Cleared after each capture. */
+  captureName: string;
+  setCaptureName: (n: string) => void;
   /** Take a dark or reference from the spectrum on the plot, or discard the one
    *  held. Shared by the toolbar, the Acquire menu and the D / R shortcuts. */
   toggleCal: (which: 'dark' | 'reference') => Promise<void>;
@@ -71,6 +74,8 @@ export const useAcqStore = create<AcqStore>()(
     captureProgress: null,
     calBusy:      null,
     sampleTag:    '',
+    captureName:  '',
+    setCaptureName: (n) => set((s) => { s.captureName = n; }),
 
     setSampleTag: (t) => set((s) => { s.sampleTag = t; }),
 
@@ -113,23 +118,26 @@ export const useAcqStore = create<AcqStore>()(
       const sessions = useSessionStore.getState();
       const sessionId = sessions.activeId;
       if (!sessionId) return;
-      const { id, label, color } = sessions.nextCapture();
+      const { id, color } = sessions.nextCapture();
       set((s) => { s.captureProgress = { done: 0, total: Math.max(1, get().params.averaging) }; });
       const stop = ipc.onCaptureProgress((done, total) =>
         set((s) => { s.captureProgress = { done, total }; }));
       try {
         // The backend measures and files it: a database row and a .jdx file.
-        const r = await ipc.capture({ id, label, tag, color });
+        const r = await ipc.capture({ id, label: get().captureName.trim(), tag, color });
         set((s) => { s.liveSpectrum = r.spectrum; });
         if (!r.saved) {
           useUIStore.getState().pushToast('Captured, but no workspace is active, so it was not saved.', 'error');
           return;
         }
+        // One custom name per capture: the next one is automatic again unless renamed.
+        set((s) => { s.captureName = ''; });
+        const label = r.label;
         useSessionStore.getState().addSavedCapture({
           id, sessionId, label, timestamp: r.timestamp, tag, params: r.params,
           xs: r.spectrum.xs, ys: r.spectrum.ys, color,
         });
-        if (r.fileError) useUIStore.getState().pushToast(`"${tag || label}" is in the database, but its .jdx file was not written: ${r.fileError}`, 'error');
+        if (r.fileError) useUIStore.getState().pushToast(`"${label}" is in the database, but its .jdx file was not written: ${r.fileError}`, 'error');
         else if (r.file) useUIStore.getState().pushToast(`Saved ${r.file.split(/[\\/]/).pop()}`, 'success');
       } catch (e) {
         useUIStore.getState().pushToast(String(e), 'error');

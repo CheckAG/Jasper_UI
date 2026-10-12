@@ -197,8 +197,9 @@ export const ipc = {
 
   /** One averaged measurement. The backend files it in the active workspace —
    *  a database row and a .jdx file — exactly as it would for a script. */
+  /** An empty `label` lets the backend name it spectra_NNN. */
   capture: (args: { id: string; label: string; tag: string; color: string }): Promise<{
-    spectrum: Spectrum; params: AcqParams; timestamp: number;
+    spectrum: Spectrum; params: AcqParams; timestamp: number; label: string;
     file: string | null; fileError: string | null; saved: boolean;
   }> => IS_TAURI
     ? deviceApi.invoke<CaptureResultDTO>('capture', args).then(r => {
@@ -206,6 +207,7 @@ export const ipc = {
           integration: r.frame.integration_ms } as AcqParams;
         return {
           spectrum: frameToSpectrum(r.frame, params), params, timestamp: r.frame.timestamp,
+          label: r.saved?.label ?? '',
           file: r.saved?.file ?? null, fileError: r.saved?.file_error ?? null, saved: r.saved !== null,
         };
       })

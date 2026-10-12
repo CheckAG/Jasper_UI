@@ -6,6 +6,8 @@ export function ActionShelf() {
   const captures = useSessionStore(s => s.captures);
   const sampleTag = useAcqStore(s => s.sampleTag);
   const setSampleTag = useAcqStore(s => s.setSampleTag);
+  const captureName = useAcqStore(s => s.captureName);
+  const setCaptureName = useAcqStore(s => s.setCaptureName);
 
   const deviceMeta = useAcqStore(s => s.deviceMeta);
   const writeSetting = useAcqStore(s => s.writeSetting);
@@ -74,6 +76,17 @@ export function ActionShelf() {
             style={{ width: 28, height: 28, flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
               background: 'var(--paper)', cursor: 'pointer', fontSize: 16 }}>+</button>
         </div>
+      </div>
+
+      {/* Capture name */}
+      <div style={fieldStyle}>
+        <label className="mono" style={labelStyle}>Name</label>
+        <input type="text" placeholder="spectra_### (automatic)"
+          value={captureName} onChange={e => setCaptureName(e.target.value)}
+          title="Name for the next capture and its .jdx file. Leave empty for spectra_001, spectra_002, …"
+          style={{ height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)',
+            borderRadius: 8, background: 'var(--paper)', color: 'var(--ink)',
+            fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none', minWidth: 0 }} />
       </div>
 
       {/* Sample tag */}

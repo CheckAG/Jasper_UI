@@ -178,6 +178,17 @@ pub fn set_capture_file(conn: &Connection, id: &str, path: &str) -> Result<()> {
     Ok(())
 }
 
+/// Number for the next automatic `spectra_NNN` name in a workspace: one past
+/// the highest already there, so names never repeat while those captures exist.
+pub fn next_spectrum_number(conn: &Connection, session_id: &str) -> Result<u32> {
+    let mut stmt = conn.prepare("SELECT label FROM captures WHERE session_id=?1 AND label LIKE 'spectra\\_%' ESCAPE '\\'")?;
+    let labels = stmt.query_map([session_id], |r| r.get::<_, Option<String>>(0))?;
+    let max = labels.flatten().flatten()
+        .filter_map(|l| l.strip_prefix("spectra_")?.parse::<u32>().ok())
+        .max().unwrap_or(0);
+    Ok(max + 1)
+}
+
 pub fn count_captures(conn: &Connection, session_id: &str) -> Result<i64> {
     conn.query_row(
         "SELECT COUNT(*) FROM captures WHERE session_id=?1",

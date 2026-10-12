@@ -63,6 +63,10 @@ Clean.
 - **Nothing documents whether SpectraGryph reads JCAMP compound files.** Its changelog is silent. The
   user chose compound files anyway and confirmed the result works on the board.
 - The CSV `# key: value` header listed under F6 already shipped with F2.
+- **Captures are named `spectra_NNN` per workspace by default, or by the Name field** (`ActionShelf.tsx`). The
+  `.jdx` file is named after the capture, and the tag no longer names the file. Verified on the board 2026-10-12.
+- **Restart the app after changing a Zustand store's shape.** Vite hot reload kept the old `acqStore` state
+  without `captureName`, so capture failed before it reached the API (no audit entry). A restart fixed it.
 
 ## Blocked / needs a human
 

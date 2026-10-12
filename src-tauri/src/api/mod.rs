@@ -309,9 +309,10 @@ fn capture(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<V
 fn save_capture(state: &AppState, session_id: &str, frame: &SpectrumFrame, raw: &[f32], params: &AcqParams, args: &Value) -> Result<Value, String> {
     let conn = db::open(&state.db_path).map_err(|e| e.to_string())?;
     let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
-    let label = match s("label") {
+    // The user's name if they gave one, else spectra_001, spectra_002, ... per workspace.
+    let label = match s("label").map(|l| l.trim().to_string()).filter(|l| !l.is_empty()) {
         Some(l) => l,
-        None => format!("Capture · #{:02}", db::count_captures(&conn, session_id).map_err(|e| e.to_string())? + 1),
+        None => format!("spectra_{:03}", db::next_spectrum_number(&conn, session_id).map_err(|e| e.to_string())?),
     };
     let mut row = db::CaptureRow {
         id: s("id").unwrap_or_else(|| format!("cap-{}", now_ms())),
@@ -497,13 +498,18 @@ mod tests {
         call(Caller::Gui, json!({"method":"write","params":{"name":"workspace.active","value":"s1"}})).unwrap();
         let out = call(Caller::Script, json!({"method":"invoke","params":{"command":"capture","args":{"tag":"NE-01"}}})).unwrap();
         let file = out["saved"]["file"].as_str().unwrap();
+        assert_eq!(out["saved"]["label"], "spectra_001");
+        let named = call(Caller::Script, json!({"method":"invoke","params":{"command":"capture","args":{"label":"Leaf A"}}})).unwrap();
+        assert_eq!(named["saved"]["label"], "Leaf A");
+        let next = call(Caller::Script, json!({"method":"invoke","params":{"command":"capture"}})).unwrap();
+        assert_eq!(next["saved"]["label"], "spectra_002");
         let peak = out["frame"]["peak"].as_f64().unwrap();
         assert!(peak > 0.0 && peak <= 1.0, "peak {peak} outside the full scale");
         assert!(file.contains("neon-check") && std::path::Path::new(file).exists());
         // Absorbance with a dark and a reference: processed, raw, dark, reference in one compound file.
         let jdx = std::fs::read_to_string(file).unwrap();
         assert!(jdx.contains("##DATA TYPE=LINK\n##BLOCKS=4\n") && jdx.contains("##TITLE=reference\n##BLOCK_ID=4\n"));
-        assert_eq!(db::count_captures(&conn, "s1").unwrap(), 1);
+        assert_eq!(db::count_captures(&conn, "s1").unwrap(), 3);
         assert!(sink.0.lock().unwrap().iter().any(|e| e == "capture-progress"));
         assert!(sink.0.lock().unwrap().iter().any(|e| e == "capture-saved"));
 
