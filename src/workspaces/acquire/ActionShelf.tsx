@@ -1,11 +1,11 @@
-import { useRef } from 'react';
 import { useAcqStore }   from '../../store/acqStore';
 import { useSessionStore}from '../../store/sessionStore';
 
 export function ActionShelf() {
   const params = useAcqStore(s => s.params);
   const captures = useSessionStore(s => s.captures);
-  const tagRef = useRef('');
+  const sampleTag = useAcqStore(s => s.sampleTag);
+  const setSampleTag = useAcqStore(s => s.setSampleTag);
 
   const deviceMeta = useAcqStore(s => s.deviceMeta);
   const writeSetting = useAcqStore(s => s.writeSetting);
@@ -80,7 +80,7 @@ export function ActionShelf() {
       <div style={fieldStyle}>
         <label className="mono" style={labelStyle}>Sample Tag</label>
         <input type="text" placeholder="e.g. leaf · stress"
-          onChange={e => { tagRef.current = e.target.value; }}
+          value={sampleTag} onChange={e => setSampleTag(e.target.value)}
           style={{ height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)',
             borderRadius: 8, background: 'var(--paper)', color: 'var(--ink)',
             fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none', minWidth: 0 }} />
@@ -88,7 +88,7 @@ export function ActionShelf() {
 
       {/* Capture CTA */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 180px', minWidth: 0 }}>
-        <button onClick={() => runCapture(tagRef.current)}
+        <button onClick={() => runCapture()}
           disabled={busyCapture || !paused || !deviceMeta}
           title={busyCapture
             ? `Capturing scan ${progress?.done ?? 0} of ${progress?.total ?? 0}`

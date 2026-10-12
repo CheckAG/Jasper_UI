@@ -411,7 +411,7 @@ function DiagnosticsDialog({ onClose }: { onClose: () => void }) {
 
 function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   const rows: [string, string][] = [
-    ['Space', 'Capture (Live off)'], ['P', 'Live / freeze'], ['D', 'Take / remove dark'],
+    ['Space', 'Capture (Live off)'], ['L', 'Live / freeze'], ['D', 'Take / remove dark'],
     ['R', 'Take / remove reference'], ['⌘K / Ctrl+K', 'Command palette'], ['Esc', 'Close'],
     ['Drag · right-drag', 'Zoom box · pan the plot'], ['Double-click', 'Fit the plot'],
   ];

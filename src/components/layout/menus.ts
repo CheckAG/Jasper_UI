@@ -38,7 +38,7 @@ export function buildMenus(): Menu[] {
       { label: 'Diagnostics', action: () => ui.setDialog('diagnostics') },
     ]},
     { name: 'Acquire', items: [
-      { label: acq.paused ? 'Go live' : 'Freeze', shortcut: 'P',
+      { label: acq.paused ? 'Go live' : 'Freeze', shortcut: 'L',
         action: connected ? () => acq.setPaused(!acq.paused) : undefined, hint: needDevice },
       { label: 'Capture', shortcut: 'Space',
         action: connected && acq.paused ? () => { acq.runCapture(); } : undefined,

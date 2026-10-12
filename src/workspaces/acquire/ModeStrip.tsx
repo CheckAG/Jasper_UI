@@ -41,6 +41,20 @@ export function ModeStrip() {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <button onClick={() => setPaused(!paused)} disabled={!deviceMeta} style={{
+        padding: '6px 12px', border: '1px solid var(--line)',
+        borderRadius: 8, background: paused ? 'var(--paper)' : 'var(--signal-soft)',
+        color: paused ? 'var(--ink-2)' : 'var(--signal)',
+        cursor: deviceMeta ? 'pointer' : 'not-allowed', opacity: deviceMeta ? 1 : 0.5,
+        fontFamily: 'var(--font-sans)', fontSize: 13,
+        display: 'flex', alignItems: 'center', gap: 8,
+      }} title={!deviceMeta ? 'Connect an instrument first'
+        : paused ? 'Resume the live stream' : 'Freeze the live stream'}>
+        {paused ? '⏸ Paused' : '● Live'}
+        <span className="mono" style={{ fontSize: 10, color: paused ? 'var(--muted)' : 'var(--signal)' }}>L</span>
+      </button>
+
+
       {(['dark', 'reference'] as const).map(k => {
         const isHeld = held[k];
         const name = k === 'dark' ? 'Dark' : 'Reference';
@@ -78,18 +92,6 @@ export function ModeStrip() {
         </button>
       )}
 
-      <button onClick={() => setPaused(!paused)} disabled={!deviceMeta} style={{
-        marginLeft: 'auto', padding: '6px 12px', border: '1px solid var(--line)',
-        borderRadius: 8, background: paused ? 'var(--paper)' : 'var(--signal-soft)',
-        color: paused ? 'var(--ink-2)' : 'var(--signal)',
-        cursor: deviceMeta ? 'pointer' : 'not-allowed', opacity: deviceMeta ? 1 : 0.5,
-        fontFamily: 'var(--font-sans)', fontSize: 13,
-        display: 'flex', alignItems: 'center', gap: 8,
-      }} title={!deviceMeta ? 'Connect an instrument first'
-        : paused ? 'Resume the live stream' : 'Freeze the live stream'}>
-        {paused ? '⏸ Paused' : '● Live'}
-        <span className="mono" style={{ fontSize: 10, color: paused ? 'var(--muted)' : 'var(--signal)' }}>P</span>
-      </button>
     </div>
   );
 }

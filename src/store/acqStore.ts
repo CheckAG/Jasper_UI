@@ -35,6 +35,9 @@ interface AcqStore {
    *  Lives here so the Capture button and the Space shortcut run the same code
    *  — they used to take captures by two different routes. */
   runCapture: (tag?: string) => Promise<void>;
+  /** Sample tag typed in the controls column; filed with every capture, however it is triggered. */
+  sampleTag: string;
+  setSampleTag: (t: string) => void;
   /** Take a dark or reference from the spectrum on the plot, or discard the one
    *  held. Shared by the toolbar, the Acquire menu and the D / R shortcuts. */
   toggleCal: (which: 'dark' | 'reference') => Promise<void>;
@@ -61,6 +64,9 @@ export const useAcqStore = create<AcqStore>()(
     calHeld:      { dark: false, reference: false },
     captureProgress: null,
     calBusy:      null,
+    sampleTag:    '',
+
+    setSampleTag: (t) => set((s) => { s.sampleTag = t; }),
 
     setParam: (key, value) =>
       set((s) => { s.params[key] = value; }),
@@ -69,7 +75,7 @@ export const useAcqStore = create<AcqStore>()(
     setCursor: (c) =>
       set((s) => { s.cursor = c; }),
 
-    // Live needs a device. Guarded here so the button and the P shortcut both
+    // Live needs a device. Guarded here so the button and the L shortcut both
     // respect it; the backend refuses too.
     setPaused: (v) => {
       if (!v && !get().deviceMeta) return;
@@ -89,7 +95,7 @@ export const useAcqStore = create<AcqStore>()(
       }
     },
 
-    runCapture: async (tag = '') => {
+    runCapture: async (tag = get().sampleTag) => {
       if (get().captureProgress) return;   // one measurement at a time
       // Capture only from a frozen plot. While Live is running the trace is
       // moving, so there is no particular spectrum being captured.

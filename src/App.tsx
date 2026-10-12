@@ -56,7 +56,7 @@ export default function App() {
         // a capture that skipped averaging and progress entirely.
         useAcqStore.getState().runCapture();
       }
-      if (e.key === 'p')       setPaused(!paused);
+      if (e.key === 'l')       setPaused(!paused);
       if (e.key === 'd')       useAcqStore.getState().toggleCal('dark');
       if (e.key === 'r')       useAcqStore.getState().toggleCal('reference');
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true); }
