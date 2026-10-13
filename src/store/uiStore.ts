@@ -5,7 +5,7 @@ import { DEFAULT_WORKSPACE } from '../lib/features';
 
 export type Theme = 'light' | 'dark';
 /** Dialogs opened from the menu bar. One at a time. */
-export type DialogId = 'instruments' | 'firmware' | 'diagnostics' | 'xcal' | 'shortcuts';
+export type DialogId = 'instruments' | 'firmware' | 'diagnostics' | 'xcal' | 'shortcuts' | 'burst';
 export type ToastKind = 'error' | 'info' | 'success';
 export interface Toast { id: string; message: string; kind: ToastKind; }
 

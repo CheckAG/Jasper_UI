@@ -290,6 +290,7 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &
         "start_live" => { start_live(state, events.clone())?; Ok(json!("ok")) }
         "stop_live" => { state.stop_acquisition(); Ok(json!("ok")) }
         "capture" => capture(state, events, &args),
+        "burst" => burst(state, events, &args),
         "capture_dark" | "capture_reference" => tag_last_frame(state, if command == "capture_dark" { "dark" } else { "reference" }),
         "clear_dark" | "clear_reference" => {
             let mut cal = lock(&state.calibration)?;
@@ -393,6 +394,57 @@ fn tag_last_frame(state: &AppState, which: &str) -> Result<Value, ApiError> {
 /// args: tag, label, color, id (all optional; the GUI passes its own).
 fn capture(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Value, ApiError> {
     state.stop_acquisition();
+    shoot(state, events, args)
+}
+
+/// Longest burst and longest wait between its shots.
+pub const BURST_MAX: u64 = 1000;
+pub const BURST_INTERVAL_MAX_MS: u64 = 3_600_000;
+
+/// `count` captures, each started `interval_ms` after the last one started
+/// (0 = back to back), each saved like a single capture. `label` names them
+/// label_001, label_002, ...; without one they are spectra_NNN. `stop_live`
+/// (or anything else that stops acquisition) ends it; the shots taken stay.
+///
+/// args: count, interval_ms, label, tag.
+fn burst(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Value, ApiError> {
+    let num = |k: &str, range: std::ops::RangeInclusive<u64>| args.get(k).unwrap_or(&json!(0)).as_u64()
+        .filter(|n| range.contains(n))
+        .ok_or_else(|| ApiError::new(4011, "INVALID_VALUE", format!("{k} must be a whole number from {} to {}", range.start(), range.end())));
+    let count = num("count", 1..=BURST_MAX)?;
+    let interval = Duration::from_millis(num("interval_ms", 0..=BURST_INTERVAL_MAX_MS)?);
+    // A burst is for the record: unsaved shots would be thrown away one by one.
+    if lock(&state.settings)?.workspace.is_none() {
+        return Err(ApiError::new(4020, "PRECONDITION_FAILED", "open a workspace first: burst shots are saved there"));
+    }
+    let label = args.get("label").and_then(Value::as_str).map(str::trim).filter(|l| !l.is_empty());
+    state.stop_acquisition();
+    let generation = state.acq_generation.load(Ordering::SeqCst);
+    let stopped = || state.acq_generation.load(Ordering::SeqCst) != generation;
+
+    let mut ids = Vec::new();
+    let mut last = Value::Null;
+    for i in 1..=count {
+        let started = std::time::Instant::now();
+        let mut shot = args.clone();
+        shot["label"] = label.map_or(Value::Null, |l| json!(format!("{l}_{i:03}")));
+        shot["id"] = json!(format!("cap-{}-{i}", now_ms()));   // shots can land in the same millisecond
+        let out = shoot(state, events, &shot)?;
+        ids.push(out["saved"]["id"].clone());
+        last = out["frame"].clone();
+        events.emit("burst-progress", json!({ "done": i, "total": count }));
+        if i == count { break; }
+        // Sliced, so a stop is seen within a tenth of a second, not after the interval.
+        while !stopped() && started.elapsed() < interval {
+            std::thread::sleep(Duration::from_millis(100).min(interval.saturating_sub(started.elapsed())));
+        }
+        if stopped() { break; }
+    }
+    Ok(json!({ "taken": ids.len(), "total": count, "stopped": (ids.len() as u64) < count, "ids": ids, "frame": last }))
+}
+
+/// One capture without stopping anything first: `capture` and `burst` share it.
+fn shoot(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Value, ApiError> {
     let params = params(state)?;
     let frame = {
         let driver = lock(&state.driver)?;
@@ -785,5 +837,46 @@ mod tests {
         let log = std::fs::read_to_string(&state.audit_path).unwrap();
         assert!(log.contains("\"result\":\"DENIED\"") && log.contains("\"command\":\"confirm\""), "{log}");
         assert!(!log.contains("not an image"), "the image itself is not logged");
+    }
+
+    /// A burst files every shot as its own capture, named label_NNN, and stops
+    /// early on stop_live keeping the shots already taken.
+    #[test]
+    fn a_burst_saves_each_shot_and_stops_on_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path(), dir.path().join("spectra"));
+        let sink = Arc::new(Sink(Mutex::new(vec![])));
+        let ev: Arc<dyn Events> = sink.clone();
+        let call = |v: Value| dispatch(&state, ev.clone(), Caller::Script, req(v));
+        let burst = |args: Value| call(json!({"method":"invoke","params":{"command":"burst","args":args}}));
+
+        let (mut sim, pty) = simulator();
+        call(json!({"method":"invoke","params":{"command":"connect","args":{"port":pty}}})).unwrap();
+        call(json!({"method":"write","params":{"name":"acquisition.averages","value":1}})).unwrap();
+        assert_eq!(burst(json!({"count":2})).unwrap_err().message, "PRECONDITION_FAILED");   // no workspace
+        let conn = db::open(&state.db_path).unwrap();
+        conn.execute("INSERT INTO sessions (id, name, created_at) VALUES ('s1','Burst',0)", []).unwrap();
+        call(json!({"method":"write","params":{"name":"workspace.active","value":"s1"}})).unwrap();
+        assert_eq!(burst(json!({})).unwrap_err().message, "INVALID_VALUE");
+        assert_eq!(burst(json!({"count":1001})).unwrap_err().message, "INVALID_VALUE");
+
+        let out = burst(json!({"count":3, "label":"leaf", "tag":"T1"})).unwrap();
+        assert_eq!((out["taken"].clone(), out["stopped"].clone()), (json!(3), json!(false)));
+        let rows = db::load_captures(&conn, "s1").unwrap();
+        let labels: Vec<_> = rows.iter().filter_map(|r| r.label.clone()).collect();
+        assert_eq!(labels, ["leaf_001", "leaf_002", "leaf_003"]);
+        assert!(rows.iter().all(|r| r.tag == "T1" && r.file_path.is_some()));
+        assert_eq!(sink.0.lock().unwrap().iter().filter(|e| *e == "burst-progress").count(), 3);
+
+        // A long interval, stopped after the first shot: one taken, unnamed ones are spectra_NNN.
+        std::thread::scope(|s| {
+            let run = s.spawn(|| burst(json!({"count":5, "interval_ms":60_000})).unwrap());
+            std::thread::sleep(Duration::from_millis(1500));
+            call(json!({"method":"invoke","params":{"command":"stop_live"}})).unwrap();
+            let out = run.join().unwrap();
+            assert_eq!((out["taken"].clone(), out["stopped"].clone()), (json!(1), json!(true)));
+        });
+        assert_eq!(db::load_captures(&conn, "s1").unwrap().last().unwrap().label.as_deref(), Some("spectra_001"));
+        sim.kill().unwrap();
     }
 }

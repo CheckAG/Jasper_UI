@@ -230,6 +230,26 @@ export const ipc = {
       })
     : noBackend('Capturing'),
 
+  /** `count` captures `intervalMs` apart (start to start), each filed like a
+   *  single capture and named `label`_001… (spectra_NNN when empty). stopLive ends it early. */
+  burst: (args: { count: number; intervalMs: number; label: string; tag: string }, params: AcqParams): Promise<{
+    taken: number; total: number; stopped: boolean; spectrum: Spectrum | null;
+  }> => IS_TAURI
+    ? deviceApi.invoke<{ taken: number; total: number; stopped: boolean; frame: CaptureResultDTO['frame'] | null }>('burst',
+        { count: args.count, interval_ms: args.intervalMs, label: args.label, tag: args.tag })
+        .then(r => ({ taken: r.taken, total: r.total, stopped: r.stopped,
+          spectrum: r.frame ? frameToSpectrum(r.frame, params) : null }))
+    : noBackend('Burst capture'),
+
+  /** Shots done in a burst in flight. */
+  onBurstProgress: (cb: (done: number, total: number) => void): (() => void) => {
+    if (!IS_TAURI) return () => {};
+    let unlisten: (() => void) | null = null;
+    listen<{ done: number; total: number }>('burst-progress', e => cb(e.payload.done, e.payload.total))
+      .then(fn => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  },
+
   /** Scan-by-scan progress of a capture in flight. */
   /** A capture was filed by any caller — the GUI, a script, the CLI or an agent. */
   onCaptureSaved: (cb: (sessionId: string, id: string) => void): (() => void) => {

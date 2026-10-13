@@ -47,6 +47,9 @@ interface AcqStore {
   /** Name for the next capture; empty means automatic (spectra_NNN). Cleared after each capture. */
   captureName: string;
   setCaptureName: (n: string) => void;
+  /** Run a burst: `count` captures `intervalMs` apart, each filed in the workspace.
+   *  Progress shows in `captureProgress` as shots, so Capture waits for it. */
+  runBurst: (count: number, intervalMs: number, label: string, tag: string) => Promise<void>;
   /** Take a dark or reference from the spectrum on the plot, or discard the one
    *  held. Shared by the toolbar, the Acquire menu and the D / R shortcuts. */
   toggleCal: (which: 'dark' | 'reference') => Promise<void>;
@@ -142,6 +145,29 @@ export const useAcqStore = create<AcqStore>()(
         });
         if (r.fileError) useUIStore.getState().pushToast(`"${label}" is in the database, but its .jdx file was not written: ${r.fileError}`, 'error');
         else if (r.file) useUIStore.getState().pushToast(`Saved ${r.file.split(/[\\/]/).pop()}`, 'success');
+      } catch (e) {
+        useUIStore.getState().pushToast(String(e), 'error');
+      } finally {
+        stop();
+        set((s) => { s.captureProgress = null; });
+      }
+    },
+
+    runBurst: async (count, intervalMs, label, tag) => {
+      if (get().captureProgress) return;
+      if (!get().paused) {
+        useUIStore.getState().pushToast('Turn Live off before a burst.', 'info');
+        return;
+      }
+      set((s) => { s.captureProgress = { done: 0, total: count }; });
+      const stop = ipc.onBurstProgress((done, total) =>
+        set((s) => { s.captureProgress = { done, total }; }));
+      try {
+        const r = await ipc.burst({ count, intervalMs, label: label.trim(), tag }, get().params);
+        if (r.spectrum) set((s) => { s.liveSpectrum = r.spectrum; });
+        // The shots reach the Captures panel through capture-saved.
+        useUIStore.getState().pushToast(r.stopped ? `Burst stopped: ${r.taken} of ${r.total} saved.`
+          : `Burst done: ${r.taken} captures saved.`, r.stopped ? 'info' : 'success');
       } catch (e) {
         useUIStore.getState().pushToast(String(e), 'error');
       } finally {

@@ -43,6 +43,7 @@ export function buildMenus(): Menu[] {
       { label: 'Capture', shortcut: 'Space',
         action: connected && acq.paused ? () => { acq.runCapture(); } : undefined,
         hint: connected ? 'Freeze first' : needDevice },
+      { label: 'Burst capture…', action: connected ? () => ui.setDialog('burst') : undefined, hint: needDevice },
       '-',
       { label: acq.calHeld.dark ? 'Remove dark' : 'Take dark', shortcut: 'D',
         action: acq.calHeld.dark || acq.liveSpectrum ? () => { acq.toggleCal('dark'); } : undefined,

@@ -438,6 +438,47 @@ function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** N captures, optionally spaced out in time. The burst runs in the backend;
+ *  closing the dialog does not stop it, Stop does (keeping the shots taken). */
+function BurstDialog({ onClose }: { onClose: () => void }) {
+  const { runBurst, sampleTag, captureProgress, paused } = useAcqStore();
+  const [count, setCount] = useState(10);
+  const [seconds, setSeconds] = useState(0);
+  const [label, setLabel] = useState('');
+  const [tag, setTag] = useState(sampleTag);
+  // From the store, so reopening the dialog mid-burst still shows progress and Stop.
+  const running = captureProgress !== null;
+  const valid = Number.isInteger(count) && count >= 1 && count <= 1000 && seconds >= 0 && seconds <= 3600;
+  const input = { height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)', borderRadius: 8,
+    background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none' };
+  const field = (name: string, el: React.ReactNode, hint?: string) => (
+    <label style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 10, fontSize: 13 }} title={hint}>
+      <span>{name}</span>{el}
+    </label>
+  );
+  const start = () => { runBurst(count, Math.round(seconds * 1000), label, tag); };
+  return (
+    <Modal title="Burst capture" subtitle="Each shot is a full capture, saved in the workspace" width={440} onClose={onClose}>
+      {field('Shots', <input type="number" min={1} max={1000} step={1} value={count} disabled={running}
+        onChange={e => setCount(Number(e.target.value))} style={input} />, '1 to 1000')}
+      {field('Interval (s)', <input type="number" min={0} max={3600} step={0.1} value={seconds} disabled={running}
+        onChange={e => setSeconds(Number(e.target.value))} style={input} />, 'From the start of one shot to the next. 0 = back to back.')}
+      {field('Name', <input type="text" placeholder="spectra_### (automatic)" value={label} disabled={running}
+        onChange={e => setLabel(e.target.value)} style={input} />, 'Shots are named name_001, name_002, …')}
+      {field('Sample tag', <input type="text" value={tag} disabled={running}
+        onChange={e => setTag(e.target.value)} style={input} />)}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-end' }}>
+        {running && <span className="mono" style={{ fontSize: 12, color: 'var(--muted)', marginRight: 'auto' }}>
+          Shot {captureProgress?.done ?? 0} of {captureProgress?.total ?? count}</span>}
+        {!paused && !running && <span style={{ fontSize: 12, color: 'var(--muted)', marginRight: 'auto' }}>Turn Live off first.</span>}
+        {running
+          ? <Button onClick={() => { ipc.stopLive().catch(() => {}); }}>Stop</Button>
+          : <Button variant="primary" disabled={!valid || !paused} onClick={start}>Start</Button>}
+      </div>
+    </Modal>
+  );
+}
+
 /** Whichever menu-bar dialog is open. */
 export function DeviceDialogs() {
   const { dialog, setDialog } = useUIStore();
@@ -448,6 +489,7 @@ export function DeviceDialogs() {
     case 'firmware':    return <FirmwareDialog onClose={close} />;
     case 'diagnostics': return <DiagnosticsDialog onClose={close} />;
     case 'shortcuts':   return <ShortcutsDialog onClose={close} />;
+    case 'burst':       return <BurstDialog onClose={close} />;
     case 'xcal':        return <Modal title="X-axis calibration" onClose={close}><CalibrationPanel connected={connected} /></Modal>;
     default:            return null;
   }

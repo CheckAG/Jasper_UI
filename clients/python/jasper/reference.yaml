@@ -63,6 +63,8 @@ measures:
 files:
   - Each capture is saved in the workspace folder (~/JASPER/<workspace>/) as a .jdx JCAMP-DX file.
     With a dark or reference held it is a compound file - block 1 processed, then raw sample, dark, reference.
+  - A burst (invoke burst with count, interval_ms, label, tag) saves each shot as its own capture,
+    named label_001, label_002, ... (spectra_NNN without a label). stop_live ends it early; shots taken stay.
 
 safety:
   privileged_actions:
