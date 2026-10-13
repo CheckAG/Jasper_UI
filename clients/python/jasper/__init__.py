@@ -10,10 +10,15 @@ numbers and the audit log are the same.
         j.write("acquisition.integration_time_ms", 50)
         out = j.invoke("capture", tag="NE-01")
         print(out["saved"]["file"])
+
+        j.subscribe("spectrum-frame")          # events arrive between replies
+        for name, frame in j.events():         # blocks; frames a slow reader misses are dropped
+            print(max(frame["ys"]))
 """
 
 import json
 import socket
+from collections import deque
 
 PORT = 8765
 
@@ -39,19 +44,37 @@ class Client:
         self._rx = self._sock.makefile("r", encoding="utf-8")
         self._caller = caller
         self._id = 0
+        self._events = deque()   # notifications that arrived while waiting for a reply
 
     def call(self, method: str, params: dict):
         self._id += 1
         msg = {"jsonrpc": "2.0", "id": self._id, "caller": self._caller,
                "method": method, "params": params}
         self._sock.sendall((json.dumps(msg) + "\n").encode())
-        line = self._rx.readline()
-        if not line:
-            raise ConnectionError("JASPER closed the connection")
-        reply = json.loads(line)
+        while "id" not in (reply := self._recv()):
+            self._events.append((reply["method"], reply.get("params")))
         if "error" in reply:
             raise ApiError(reply["error"])
         return reply["result"]
+
+    def _recv(self) -> dict:
+        line = self._rx.readline()
+        if not line:
+            raise ConnectionError("JASPER closed the connection")
+        return json.loads(line)
+
+    def subscribe(self, *events: str):
+        """Replace this connection's events: spectrum-frame, capture-progress,
+        capture-saved. No names stops them. Read them with `events()`."""
+        return self.call("subscribe", {"events": list(events)})
+
+    def events(self):
+        """Yield (name, payload) for each subscribed event, forever."""
+        while True:
+            if self._events:
+                yield self._events.popleft()
+            elif "id" not in (msg := self._recv()):
+                yield msg["method"], msg.get("params")
 
     def read(self, *names: str):
         """One name → its value; several → {name: value}."""

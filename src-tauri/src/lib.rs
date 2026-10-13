@@ -33,9 +33,10 @@ pub fn run() {
                 Ok(listener) => {
                     let handle = app.handle().clone();
                     let events: std::sync::Arc<dyn api::Events> = std::sync::Arc::new(handle.clone());
+                    let hub = handle.state::<AppState>().subscribers.clone();
                     api::server::serve(listener, std::sync::Arc::new(move |caller, req| {
                         api::dispatch(&handle.state::<AppState>(), events.clone(), caller, req)
-                    }));
+                    }), hub);
                     eprintln!("[api] listening on 127.0.0.1:{}", api::server::PORT);
                 }
                 Err(e) => eprintln!("[api] not listening on 127.0.0.1:{}: {e}", api::server::PORT),

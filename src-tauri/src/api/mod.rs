@@ -72,6 +72,10 @@ pub trait Events: Send + Sync {
 }
 impl<R: tauri::Runtime> Events for tauri::AppHandle<R> {
     fn emit(&self, event: &str, payload: Value) {
+        // Every emit, whoever started it, also reaches subscribed socket clients.
+        if let Some(state) = tauri::Manager::try_state::<AppState>(self) {
+            state.subscribers.publish(event, &payload);
+        }
         if let Err(e) = tauri::Emitter::emit(self, event, payload) {
             eprintln!("emit {event}: {e}");
         }

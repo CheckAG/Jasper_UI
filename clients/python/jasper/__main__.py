@@ -3,6 +3,7 @@
     python -m jasper read device.state acquisition.integration_time_ms
     python -m jasper write acquisition.averages 8
     python -m jasper invoke capture tag=NE-01
+    python -m jasper watch spectrum-frame capture-saved   # one JSON line per event
 
 Values are parsed as JSON when they can be (8 → number, true → bool),
 otherwise taken as text. Prints the result as JSON; exits 1 on an API error.
@@ -34,17 +35,25 @@ def main(argv=None) -> int:
     i = sub.add_parser("invoke", help="run a command, args as key=value")
     i.add_argument("command")
     i.add_argument("args", nargs="*")
+    e = sub.add_parser("watch", help="print events as they happen, one JSON line each")
+    e.add_argument("events", nargs="+")
     a = p.parse_args(argv)
 
     try:
         with Client(port=a.port, caller="cli") as j:
-            if a.method == "read":
+            if a.method == "watch":
+                j.subscribe(*a.events)
+                for name, payload in j.events():
+                    print(json.dumps({"event": name, "params": payload}), flush=True)
+            elif a.method == "read":
                 out = j.read(*a.names)
             elif a.method == "write":
                 out = j.write(a.name, a.value)
             else:
                 kv = dict(s.split("=", 1) for s in a.args)
                 out = j.invoke(a.command, **{k: value(v) for k, v in kv.items()})
+    except KeyboardInterrupt:
+        return 0
     except ConnectionRefusedError:
         print(f"JASPER is not running (nothing on 127.0.0.1:{a.port})", file=sys.stderr)
         return 1

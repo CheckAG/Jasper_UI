@@ -39,6 +39,8 @@ pub struct AppState {
     pub live:            Arc<AtomicBool>,
     /// Device API audit log, one JSON object per line.
     pub audit_path:      std::path::PathBuf,
+    /// Socket clients that asked for events (`subscribe`). Arc: the server holds it too.
+    pub subscribers:     Arc<crate::api::server::Hub>,
 }
 
 impl AppState {
@@ -102,6 +104,7 @@ impl AppState {
             settings:       Mutex::new(Default::default()),
             live:           Arc::new(AtomicBool::new(false)),
             audit_path:     data_dir.join("api-audit.jsonl"),
+            subscribers:    Default::default(),
         }
     }
 
