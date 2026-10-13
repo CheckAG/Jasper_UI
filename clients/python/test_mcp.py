@@ -67,6 +67,11 @@ def main():
                                       "params": {"name": "jasper_write", "arguments": {}}})
     assert down["result"]["isError"] and "not running" in down["result"]["content"][0]["text"]
     assert nope["error"]["code"] == -32602
+
+    # A misspelt argument is an error the agent can correct, not an empty answer.
+    (wrong,) = session(port, {"jsonrpc": "2.0", "id": 6, "method": "tools/call",
+                              "params": {"name": "jasper_read", "arguments": {"name": "device.info"}}})
+    assert wrong["result"]["isError"] and '"names"' in wrong["result"]["content"][0]["text"]
     print("ok")
 
 

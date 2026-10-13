@@ -39,6 +39,10 @@ TOOLS = [{
 
 def read_tool(port: int, names: list) -> dict:
     """tools/call result for jasper_read: the values, or an error the agent can act on."""
+    # A missing or misspelt argument (e.g. "name") is refused, not answered with {}.
+    if not names or not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        return {"content": [{"type": "text", "text": 'jasper_read takes {"names": [variable, ...]}, e.g. ["device.info"].'}],
+                "isError": True}
     try:
         with Client(port=port, caller="agent", timeout=10) as j:
             values = j.call("read", {"names": names})
