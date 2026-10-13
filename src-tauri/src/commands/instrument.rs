@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tauri::{AppHandle, State, Emitter};
+use tauri::{AppHandle, State};
 use crate::state::AppState;
 use crate::instrument::driver::XCalResult;
 use crate::api::{self, Caller, Request};
@@ -36,39 +36,6 @@ pub async fn cmd_api(
     })
     .await
     .map_err(|e| api::ApiError { code: 5000, message: "INTERNAL", detail: e.to_string(), data: serde_json::Value::Null })?
-}
-
-// ── Firmware ──────────────────────────────────────────────────────────────────
-
-/// Install a firmware image (S-record text) on the board at `device_id`, then
-/// reconnect to it. Returns the firmware version the board now reports.
-///
-/// `device_id` may be the connected instrument or one discovery listed as
-/// "bootloader" — a board left there by an interrupted update.
-///
-/// The driver is disconnected first and its lock released for the duration:
-/// the update takes tens of seconds, and holding the lock would stall every
-/// metadata poll behind it. Emits "firmware-progress" as `{stage, done, total}`.
-#[tauri::command]
-pub async fn cmd_update_firmware(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    device_id: String,
-    srec: String,
-) -> Result<String, String> {
-    state.stop_acquisition();
-    let driver = Arc::clone(&state.driver);
-    run_blocking(move || {
-        driver.lock().map_err(|e| e.to_string())?.disconnect();
-        let (port, firmware) = crate::instrument::tcd1304::update::install(&device_id, &srec, |stage, done, total| {
-            let _ = app.emit("firmware-progress", serde_json::json!({
-                "stage": stage, "done": done, "total": total,
-            }));
-        })?;
-        crate::api::connect_port(&driver, &port)?;
-        Ok(firmware)
-    })
-    .await
 }
 
 // ── Live-stream backpressure ──────────────────────────────────────────────────

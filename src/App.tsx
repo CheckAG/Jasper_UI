@@ -9,6 +9,7 @@ import { CommandPalette }        from './components/overlays/CommandPalette';
 import { ExportDialog }          from './components/overlays/ExportDialog';
 import { NewSessionDialog }      from './components/overlays/NewSessionDialog';
 import { Toaster }               from './components/overlays/Toaster';
+import { ConfirmRequests }       from './components/overlays/ConfirmRequests';
 
 export default function App() {
   // Live, integration and averaging live in the backend (Device API); the
@@ -83,6 +84,7 @@ export default function App() {
       {cmdOpen        && <CommandPalette />}
       {exportOpen     && <ExportDialog />}
       {newSessionOpen && <NewSessionDialog />}
+      <ConfirmRequests />
       <Toaster />
     </>
   );

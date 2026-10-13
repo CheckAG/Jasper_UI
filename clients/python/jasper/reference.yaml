@@ -66,7 +66,9 @@ files:
 
 safety:
   privileged_actions:
-    - firmware upgrade (GUI only; an agent cannot start or approve it)
+    - firmware upgrade (invoke update_firmware). From a script, the CLI or an agent the call waits
+      until a person approves it in the app (up to 120 s); DENIED or CONFIRM_TIMEOUT otherwise.
+      Nothing outside the app can approve.
   enforced_by: [JASPER app]
 
 usage_notes:

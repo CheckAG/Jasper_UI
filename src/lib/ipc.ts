@@ -79,6 +79,9 @@ const noBackend = <T,>(what: string): Promise<T> =>
 
 /** The Device API (src-tauri/src/api). Errors come back as
  *  {code, message, detail}; they are rethrown as Errors carrying the detail. */
+/** A privileged request from outside the app, waiting for a person. */
+export interface ConfirmRequest { id: number; caller: string; command: string; args: Record<string, unknown> }
+
 interface ApiErrorDTO { code: number; message: string; detail: string }
 function callApi<T>(request: object): Promise<T> {
   return tauriInvoke<T>('cmd_api', { request }).catch((e: ApiErrorDTO | string) => {
@@ -152,8 +155,21 @@ export const ipc = {
   /** Install an S-record firmware image on `deviceId` and reconnect to it.
    *  Resolves with the firmware version the board reports afterwards. */
   updateFirmware: (deviceId: string, srec: string): Promise<string> => IS_TAURI
-    ? tauriInvoke<string>('cmd_update_firmware', { deviceId, srec })
+    ? deviceApi.invoke<string>('update_firmware', { device_id: deviceId, srec })
     : Promise.reject(new Error('Firmware update needs the desktop app')),
+
+  /** A script, the CLI or an agent asks for a privileged command; it waits until
+   *  `answerConfirm`. `onClosed` fires when a request is answered or times out. */
+  onConfirmRequests: (onRequest: (r: ConfirmRequest) => void, onClosed: (id: number) => void): (() => void) => {
+    if (!IS_TAURI) return () => {};
+    const stops: (() => void)[] = [];
+    listen<ConfirmRequest>('confirm-request', e => onRequest(e.payload)).then(fn => stops.push(fn));
+    listen<{ id: number }>('confirm-closed', e => onClosed(e.payload.id)).then(fn => stops.push(fn));
+    return () => stops.forEach(f => f());
+  },
+
+  answerConfirm: (id: number, approve: boolean): Promise<unknown> =>
+    deviceApi.invoke('confirm', { id, approve }),
 
   onFirmwareProgress: (cb: (stage: string, done: number, total: number) => void): (() => void) => {
     if (!IS_TAURI) return () => {};

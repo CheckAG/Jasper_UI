@@ -3,6 +3,7 @@
     python -m jasper read device.state acquisition.integration_time_ms
     python -m jasper write acquisition.averages 8
     python -m jasper invoke capture tag=NE-01
+    python -m jasper invoke update_firmware path=/abs/fw.srec   # waits for a person to approve in the app
     python -m jasper watch spectrum-frame capture-saved   # one JSON line per event
 
 Values are parsed as JSON when they can be (8 → number, true → bool),

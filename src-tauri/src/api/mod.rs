@@ -8,11 +8,15 @@
 //!   read   {name} or {names: [..]}  → value, or {name: value, ..}
 //!   write  {name, value}            → {name, value} as applied
 //!   invoke {command, args}          → command result
+//! Privileged commands from anyone but the GUI wait for a person to approve
+//! them in the app (`confirm`, PRD MHS-07); only the GUI can answer.
 //! on top of the existing protocol v1 driver — nothing here talks to the port.
 
+use std::collections::HashMap;
 use std::io::Write as _;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -42,6 +46,16 @@ pub const AVERAGES_MAX: u32 = 64;
 const SATURATION_WARN: f32 = 0.98;
 /// A dark whose mean is this high has light on it. A TCD1304 dark sits near 10%.
 const DARK_WARN: f32 = 0.15;
+
+/// Commands a person approves when a script, the CLI or an agent asks. The GUI
+/// is a person at the machine already and is not asked twice.
+const PRIVILEGED: [&str; 1] = ["update_firmware"];
+/// An unanswered request is refused after this long.
+pub const CONFIRM_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Privileged requests waiting for a person: id → where the answer goes.
+#[derive(Default)]
+pub struct Confirmations { next: AtomicU64, pending: Mutex<HashMap<u64, mpsc::Sender<bool>>> }
 
 /// Who made a call. Scripts and agents get errors where the GUI gets clamping.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
@@ -98,7 +112,7 @@ pub fn dispatch(state: &AppState, events: Arc<dyn Events>, caller: Caller, req: 
     let summary = match &req {
         Request::Read(_) => None,   // polled every 2 s; not worth a log line each
         Request::Write { name, value } => Some(json!({ "method": "write", "name": name, "value": value })),
-        Request::Invoke { command, args } => Some(json!({ "method": "invoke", "command": command, "args": args })),
+        Request::Invoke { command, args } => Some(json!({ "method": "invoke", "command": command, "args": loggable(args) })),
     };
     let result = match req {
         Request::Read(ReadParams::One { name }) => read(state, &name),
@@ -106,7 +120,8 @@ pub fn dispatch(state: &AppState, events: Arc<dyn Events>, caller: Caller, req: 
             .map(|n| read(state, n).map(|v| (n.clone(), v)))
             .collect::<Result<serde_json::Map<_, _>, _>>().map(Value::Object),
         Request::Write { name, value } => write(state, &events, caller, &name, value),
-        Request::Invoke { command, args } => invoke(state, &events, &command, args),
+        Request::Invoke { command, args } => confirmed(state, &events, caller, &command, &args)
+            .and_then(|()| invoke(state, &events, caller, &command, args)),
     };
     if let Some(mut entry) = summary {
         entry["ts"] = json!(now_ms());
@@ -115,6 +130,35 @@ pub fn dispatch(state: &AppState, events: Arc<dyn Events>, caller: Caller, req: 
         audit(state, &entry);
     }
     result
+}
+
+/// Args as logged and shown: a firmware image is the size of the flash, so only its length.
+fn loggable(args: &Value) -> Value {
+    let mut out = args.clone();
+    if let Some(srec) = args.get("srec").and_then(Value::as_str) { out["srec"] = json!(format!("<{} bytes>", srec.len())); }
+    out
+}
+
+/// Ok when the call may run: not privileged, from the GUI, or approved by a
+/// person in the app. Blocks the caller until then. The GUI shows
+/// "confirm-request" and answers with the `confirm` command; "confirm-closed"
+/// tells it the request is gone, answered or timed out.
+fn confirmed(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &str, args: &Value) -> Result<(), ApiError> {
+    if caller == Caller::Gui || !PRIVILEGED.contains(&command) { return Ok(()); }
+    let book = &state.confirmations;
+    let id = book.next.fetch_add(1, Ordering::SeqCst) + 1;
+    let (tx, rx) = mpsc::channel();
+    lock(&book.pending)?.insert(id, tx);
+    events.emit("confirm-request", json!({ "id": id, "caller": caller, "command": command, "args": loggable(args) }));
+    let answer = rx.recv_timeout(CONFIRM_TIMEOUT);
+    lock(&book.pending)?.remove(&id);
+    events.emit("confirm-closed", json!({ "id": id }));
+    match answer {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(ApiError::new(4030, "DENIED", format!("a person in the app declined {command}"))),
+        Err(_) => Err(ApiError::new(4031, "CONFIRM_TIMEOUT",
+            format!("nobody approved {command} in the app within {} s", CONFIRM_TIMEOUT.as_secs()))),
+    }
 }
 
 fn audit(state: &AppState, entry: &Value) {
@@ -204,7 +248,7 @@ fn write(state: &AppState, events: &Arc<dyn Events>, caller: Caller, name: &str,
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
-fn invoke(state: &AppState, events: &Arc<dyn Events>, command: &str, args: Value) -> Result<Value, ApiError> {
+fn invoke(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &str, args: Value) -> Result<Value, ApiError> {
     let arg = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
     match command {
         "discover" => {
@@ -234,6 +278,46 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, command: &str, args: Value
         "clear_dark" | "clear_reference" => {
             let mut cal = lock(&state.calibration)?;
             if command == "clear_dark" { cal.dark = None } else { cal.reference = None }
+            Ok(json!("ok"))
+        }
+        // Install an S-record image (`srec` text, or `path` to a file the app can
+        // read) on `device_id` — the connected board unless named, or one
+        // discovery lists in its bootloader. Reconnects; returns the new version.
+        "update_firmware" => {
+            let device_id = match arg("device_id") {
+                Some(d) => d,
+                None => lock(&state.driver)?.device_list().first().map(|d| d.id.clone()).ok_or_else(not_connected)?,
+            };
+            let srec = match (arg("srec"), arg("path")) {
+                (Some(s), _) => s,
+                (None, Some(p)) => std::fs::read_to_string(&p)
+                    .map_err(|e| ApiError::new(4011, "INVALID_VALUE", format!("cannot read {p}: {e}")))?,
+                _ => return Err(ApiError::new(4011, "INVALID_VALUE", "update_firmware needs srec or path")),
+            };
+            state.stop_acquisition();
+            // Released for the install: it takes tens of seconds, and metadata
+            // polls must not stall behind it.
+            lock(&state.driver)?.disconnect();
+            let (port, firmware) = crate::instrument::tcd1304::update::install(&device_id, &srec, |stage, done, total| {
+                events.emit("firmware-progress", json!({ "stage": stage, "done": done, "total": total }));
+            }).map_err(device)?;
+            connect_port(&state.driver, &port).map_err(device)?;
+            Ok(json!(firmware))
+        }
+        // A person's answer to a privileged request. The GUI only: nothing
+        // outside the app can approve itself.
+        "confirm" => {
+            if caller != Caller::Gui {
+                return Err(ApiError::new(4032, "GUI_ONLY", "only a person in the app can approve a request"));
+            }
+            let id = args.get("id").and_then(Value::as_u64);
+            let approve = args.get("approve").and_then(Value::as_bool);
+            let (Some(id), Some(approve)) = (id, approve) else {
+                return Err(ApiError::new(4011, "INVALID_VALUE", "confirm takes {id, approve}"));
+            };
+            let tx = lock(&state.confirmations.pending)?.remove(&id)
+                .ok_or_else(|| ApiError::new(4020, "PRECONDITION_FAILED", "that request is no longer waiting"))?;
+            let _ = tx.send(approve);
             Ok(json!("ok"))
         }
         _ => Err(ApiError::new(4004, "UNKNOWN_COMMAND", format!("no command {command:?}"))),
@@ -524,5 +608,52 @@ mod tests {
         assert!(!log.contains("\"method\":\"read\""));
 
         let _ = child.kill();
+    }
+
+    /// A privileged command from a script waits for the GUI; only the GUI can
+    /// answer; denied and approved requests both end in the audit log.
+    #[test]
+    fn privileged_commands_wait_for_a_person_in_the_app() {
+        struct Asks(Mutex<mpsc::Sender<(String, Value)>>);
+        impl Events for Asks {
+            fn emit(&self, e: &str, p: Value) { let _ = self.0.lock().unwrap().send((e.into(), p)); }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let state = Arc::new(AppState::new(dir.path(), dir.path().join("spectra")));
+        let (tx, rx) = mpsc::channel();
+        let ev: Arc<dyn Events> = Arc::new(Asks(Mutex::new(tx)));
+        let call = |st: &AppState, c: Caller, v: Value| dispatch(st, ev.clone(), c, req(v));
+        let upgrade = json!({"method":"invoke","params":{"command":"update_firmware","args":{"device_id":"/dev/null","srec":"not an image"}}});
+
+        // Answer the next request as a person would, from another thread.
+        let answer = |approve: bool| {
+            let (st, ev) = (state.clone(), ev.clone());
+            let (e, p) = rx.recv().unwrap();
+            assert_eq!((e.as_str(), &p["caller"], &p["args"]["srec"]), ("confirm-request", &json!("script"), &json!("<12 bytes>")));
+            let id = p["id"].clone();
+            // A script cannot approve, even knowing the id.
+            let e = dispatch(&st, ev.clone(), Caller::Script, req(json!({"method":"invoke","params":{"command":"confirm","args":{"id":id,"approve":true}}}))).unwrap_err();
+            assert_eq!(e.message, "GUI_ONLY");
+            dispatch(&st, ev, Caller::Gui, req(json!({"method":"invoke","params":{"command":"confirm","args":{"id":id,"approve":approve}}}))).unwrap();
+            assert_eq!(rx.recv().unwrap().0, "confirm-closed");
+        };
+
+        std::thread::scope(|s| {
+            let denied = s.spawn(|| call(&state, Caller::Script, upgrade.clone()));
+            answer(false);
+            assert_eq!(denied.join().unwrap().unwrap_err().message, "DENIED");
+
+            // Approved, it runs: the image does not parse, so the install refuses it.
+            let approved = s.spawn(|| call(&state, Caller::Script, upgrade.clone()));
+            answer(true);
+            assert_eq!(approved.join().unwrap().unwrap_err().message, "DEVICE_ERROR");
+        });
+        // The GUI is not asked: no confirm-request.
+        let _ = call(&state, Caller::Gui, upgrade.clone());
+        assert!(rx.try_iter().all(|(e, _)| e != "confirm-request"));
+
+        let log = std::fs::read_to_string(&state.audit_path).unwrap();
+        assert!(log.contains("\"result\":\"DENIED\"") && log.contains("\"command\":\"confirm\""), "{log}");
+        assert!(!log.contains("not an image"), "the image itself is not logged");
     }
 }

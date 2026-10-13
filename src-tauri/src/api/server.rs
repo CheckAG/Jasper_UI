@@ -32,7 +32,8 @@ use super::{ApiError, Caller, Request};
 pub const PORT: u16 = 8765;
 
 /// What a client may subscribe to: everything the API emits.
-pub const EVENTS: [&str; 3] = ["spectrum-frame", "capture-progress", "capture-saved"];
+/// Not "confirm-request": what waits for approval is the app's business.
+pub const EVENTS: [&str; 4] = ["spectrum-frame", "capture-progress", "capture-saved", "firmware-progress"];
 
 /// Lines queued per client. A client this far behind loses events rather than
 /// stalling the live stream.

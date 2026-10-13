@@ -52,11 +52,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Instrument — everything but firmware and x-cal goes through the Device API
+            // Instrument — everything but x-cal goes through the Device API
             cmd_api,
             cmd_frame_consumed,
             cmd_calibrate_xcal,
-            cmd_update_firmware,
             // Storage
             cmd_save_session,
             cmd_load_sessions,

@@ -41,6 +41,8 @@ pub struct AppState {
     pub audit_path:      std::path::PathBuf,
     /// Socket clients that asked for events (`subscribe`). Arc: the server holds it too.
     pub subscribers:     Arc<crate::api::server::Hub>,
+    /// Privileged requests from outside the app waiting for a person.
+    pub confirmations:   crate::api::Confirmations,
 }
 
 impl AppState {
@@ -105,6 +107,7 @@ impl AppState {
             live:           Arc::new(AtomicBool::new(false)),
             audit_path:     data_dir.join("api-audit.jsonl"),
             subscribers:    Default::default(),
+            confirmations:  Default::default(),
         }
     }
 
