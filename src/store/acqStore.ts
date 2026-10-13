@@ -16,12 +16,21 @@ interface AcqStore {
   deviceMeta: DeviceMetadata | null;
   /** Which calibration frames the backend actually holds. */
   calHeld: { dark: boolean; reference: boolean };
+  /** The held dark was taken at other integration/averaging than now. */
+  darkStale: boolean;
+  /** Live frames per second, smoothed; 0 when not streaming. */
+  fps: number;
   /** Scan-by-scan progress of a capture in flight; null when idle. */
   captureProgress: { done: number; total: number } | null;
+  /** The dark or reference being taken or discarded right now. */
+  calBusy: 'dark' | 'reference' | null;
 
   setParam: <K extends keyof AcqParams>(key: K, value: AcqParams[K]) => void;
   setCursor: (c: CursorState | null) => void;
+  /** Turn Live on or off. Asks the backend; `paused` follows what it reports. */
   setPaused: (v: boolean) => void;
+  /** Change integration or averaging on the backend, which owns them. */
+  writeSetting: (key: 'integration' | 'averaging', value: number) => Promise<void>;
   setLiveSpectrum: (s: Spectrum) => void;
   /** Re-read instrument state from the backend. Called on a timer, and directly
    *  after anything that changes it so the UI does not wait for the next tick. */
@@ -30,6 +39,15 @@ interface AcqStore {
    *  Lives here so the Capture button and the Space shortcut run the same code
    *  — they used to take captures by two different routes. */
   runCapture: (tag?: string) => Promise<void>;
+  /** Sample tag typed in the controls column; filed with every capture, however it is triggered. */
+  sampleTag: string;
+  setSampleTag: (t: string) => void;
+  /** Name for the next capture; empty means automatic (spectra_NNN). Cleared after each capture. */
+  captureName: string;
+  setCaptureName: (n: string) => void;
+  /** Take a dark or reference from the spectrum on the plot, or discard the one
+   *  held. Shared by the toolbar, the Acquire menu and the D / R shortcuts. */
+  toggleCal: (which: 'dark' | 'reference') => Promise<void>;
 }
 
 export const useAcqStore = create<AcqStore>()(
@@ -39,8 +57,6 @@ export const useAcqStore = create<AcqStore>()(
       acqMode: 'continuous',
       integration: 120,
       averaging: 4,
-      lightOn: true,
-      lightPower: 80,
       xUnit: 'nm',
       yUnit: 'au',
       lockAxes: false,
@@ -53,7 +69,15 @@ export const useAcqStore = create<AcqStore>()(
     liveSpectrum: null,
     deviceMeta:   null,
     calHeld:      { dark: false, reference: false },
+    darkStale:    false,
+    fps:          0,
     captureProgress: null,
+    calBusy:      null,
+    sampleTag:    '',
+    captureName:  '',
+    setCaptureName: (n) => set((s) => { s.captureName = n; }),
+
+    setSampleTag: (t) => set((s) => { s.sampleTag = t; }),
 
     setParam: (key, value) =>
       set((s) => { s.params[key] = value; }),
@@ -62,67 +86,121 @@ export const useAcqStore = create<AcqStore>()(
     setCursor: (c) =>
       set((s) => { s.cursor = c; }),
 
-    // Live needs a device. Guarded here so the button and the P shortcut both
-    // respect it.
-    setPaused: (v) =>
-      set((s) => { if (v || s.deviceMeta) s.paused = v; }),
+    // Live needs a device. Guarded here so the button and the L shortcut both
+    // respect it; the backend refuses too.
+    setPaused: (v) => {
+      if (!v && !get().deviceMeta) return;
+      set((s) => { s.paused = v; });   // optimistic; the refresh below corrects it
+      (v ? ipc.stopLive() : ipc.startLive())
+        .catch(e => useUIStore.getState().pushToast(String(e), 'error'))
+        .finally(() => get().refreshInstrument());
+    },
 
-    runCapture: async (tag = '') => {
+    writeSetting: async (key, value) => {
+      try {
+        const applied = await ipc.writeSetting(
+          key === 'integration' ? 'acquisition.integration_time_ms' : 'acquisition.averages', value);
+        set((s) => { s.params[key] = Number(applied); });
+        get().refreshInstrument();   // stale-dark and friends follow at once, not on the next poll
+      } catch (e) {
+        useUIStore.getState().pushToast(String(e), 'error');
+      }
+    },
+
+    runCapture: async (tag = get().sampleTag) => {
       if (get().captureProgress) return;   // one measurement at a time
       // Capture only from a frozen plot. While Live is running the trace is
-      // moving, so there is no particular spectrum being captured — you would
-      // be recording whatever the device happened to be doing. Freeze first,
-      // look at what you have, then record it.
+      // moving, so there is no particular spectrum being captured.
       if (!get().paused) {
         useUIStore.getState().pushToast('Turn Live off before capturing.', 'info');
         return;
       }
-      const params = get().params;
-      set((s) => { s.captureProgress = { done: 0, total: Math.max(1, params.averaging) }; });
+      const sessions = useSessionStore.getState();
+      const sessionId = sessions.activeId;
+      if (!sessionId) return;
+      const { id, color } = sessions.nextCapture();
+      set((s) => { s.captureProgress = { done: 0, total: Math.max(1, get().params.averaging) }; });
       const stop = ipc.onCaptureProgress((done, total) =>
         set((s) => { s.captureProgress = { done, total }; }));
       try {
-        const spectrum = await ipc.capture(params);
-        // Written once, at the end: an average is not meaningful until every
-        // scan is in it.
-        set((s) => { s.liveSpectrum = spectrum; });
-        useSessionStore.getState().addCapture(params, spectrum.xs, spectrum.ys, tag);
+        // The backend measures and files it: a database row and a .jdx file.
+        const r = await ipc.capture({ id, label: get().captureName.trim(), tag, color });
+        set((s) => { s.liveSpectrum = r.spectrum; });
+        if (!r.saved) {
+          useUIStore.getState().pushToast('Captured, but no workspace is active, so it was not saved.', 'error');
+          return;
+        }
+        // One custom name per capture: the next one is automatic again unless renamed.
+        set((s) => { s.captureName = ''; });
+        const label = r.label;
+        useSessionStore.getState().addSavedCapture({
+          id, sessionId, label, timestamp: r.timestamp, tag, params: r.params,
+          xs: r.spectrum.xs, ys: r.spectrum.ys, color,
+        });
+        if (r.fileError) useUIStore.getState().pushToast(`"${label}" is in the database, but its .jdx file was not written: ${r.fileError}`, 'error');
+        else if (r.file) useUIStore.getState().pushToast(`Saved ${r.file.split(/[\\/]/).pop()}`, 'success');
       } catch (e) {
         useUIStore.getState().pushToast(String(e), 'error');
       } finally {
         stop();
         set((s) => { s.captureProgress = null; });
-        // Live is off by definition here, so the stream stays stopped: the
-        // captured spectrum remains on screen instead of being overwritten by
-        // the next frame.
+      }
+    },
+
+    // The button is the state: with nothing stored it takes one; with a frame
+    // stored it flushes it. A dark taken at the wrong integration, or a
+    // reference against the wrong standard, is worse than none — so getting rid
+    // of one has to be one press.
+    toggleCal: async (which) => {
+      const { calBusy, calHeld, liveSpectrum, refreshInstrument } = get();
+      if (calBusy) return;
+      if (!calHeld[which] && !liveSpectrum) {
+        useUIStore.getState().pushToast('No spectrum on the plot yet.', 'info');
+        return;
+      }
+      set((s) => { s.calBusy = which; });
+      try {
+        if (calHeld[which]) {
+          await ipc.clearCalibration(which);
+        } else {
+          // Tags the spectrum already on the plot — it does not measure again.
+          // Freeze a good trace with Live, then designate it.
+          const r = await ipc.tagLastFrame(which);
+          if (r.warn) useUIStore.getState().pushToast(`${which}: ${r.warn}`, 'info');
+        }
+        await refreshInstrument();
+      } catch (e) {
+        useUIStore.getState().pushToast(String(e), 'error');
+      } finally {
+        set((s) => { s.calBusy = null; });
       }
     },
 
     refreshInstrument: async () => {
-      const [meta, cal] = await Promise.all([
-        ipc.getDeviceMetadata().catch(() => null),
-        ipc.getCalibrationState().catch(() => ({ dark: false, reference: false })),
-      ]);
+      let st;
+      try { st = await ipc.readInstrument(); } catch { return; }
       set((s) => {
-        // A new (or lost) device turns Live off, so plugging the board back in
-        // never resumes a stream nobody asked for.
-        // The last frame belongs to the old device, so it goes too; otherwise
-        // Dark/Reference stay enabled against a spectrum that is gone.
-        if (meta?.serial !== s.deviceMeta?.serial) { s.paused = true; s.liveSpectrum = null; }
-        s.deviceMeta = meta;
-        s.calHeld = cal;
-        // With the Abs/Refl/Trans chips gone, what the pipeline computes follows
-        // from what has been measured rather than from a button:
-        //   neither          → raw counts
-        //   dark only        → dark-subtracted counts
-        //   dark + reference → absorbance
-        // 'intensity' is the mode meaning "subtract the dark if there is one";
-        // 'absorbance' needs both frames.
-        s.params.mode = cal.dark && cal.reference ? 'absorbance' : 'intensity';
+        // A new (or lost) device: the last frame belongs to the old one, so it
+        // goes; otherwise Dark/Reference stay enabled against a spectrum that is gone.
+        if (st.meta?.serial !== s.deviceMeta?.serial) s.liveSpectrum = null;
+        s.deviceMeta = st.meta;
+        s.calHeld = { dark: st.dark, reference: st.reference };
+        s.darkStale = st.darkStale;
+        // Everything below is owned by the backend; the store only mirrors it.
+        s.paused = !st.live;
+        if (!st.live) s.fps = 0;
+        s.params.integration = st.integration;
+        s.params.averaging = st.averaging;
+        s.params.mode = st.mode;
       });
     },
 
     setLiveSpectrum: (spectrum) =>
-      set((s) => { s.liveSpectrum = spectrum; }),
+      set((s) => {
+        // Rate from the device timestamps, smoothed so the readout does not flicker.
+        const dt = s.liveSpectrum ? spectrum.timestamp - s.liveSpectrum.timestamp : 0;
+        if (dt > 0) s.fps = s.fps ? 0.8 * s.fps + 0.2 * (1000 / dt) : 1000 / dt;
+        s.liveSpectrum = spectrum;
+      }),
   }))
 );

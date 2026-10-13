@@ -56,20 +56,9 @@ function mapManifest(nodes: ManifestNodeDTO[]): PipelineNode[] {
   }));
 }
 
-// Convert AcqParams (camelCase) → Rust snake_case
-function toRustParams(p: AcqParams) {
-  return {
-    mode: p.mode, acq_mode: p.acqMode,
-    integration: p.integration, averaging: p.averaging,
-    light_on: p.lightOn, light_power: p.lightPower,
-    x_unit: p.xUnit, y_unit: p.yUnit,
-    lock_axes: p.lockAxes, stack: p.stack,
-  };
-}
-
 // Rust SpectrumFrame → TypeScript Spectrum
 function frameToSpectrum(
-  frame: { xs: number[]; ys: number[]; timestamp: number; units?: string },
+  frame: { xs: number[]; ys: number[]; timestamp: number; units?: string; peak?: number },
   params: AcqParams,
 ): Spectrum {
   return {
@@ -78,6 +67,7 @@ function frameToSpectrum(
     timestamp: frame.timestamp,
     params,
     units: frame.units,
+    peak: frame.peak,
   };
 }
 
@@ -86,6 +76,56 @@ function frameToSpectrum(
  *  indistinguishable from a measurement once it is on screen. */
 const noBackend = <T,>(what: string): Promise<T> =>
   Promise.reject(new Error(`${what} needs the desktop app and a connected instrument.`));
+
+/** The Device API (src-tauri/src/api). Errors come back as
+ *  {code, message, detail}; they are rethrown as Errors carrying the detail. */
+/** A privileged request from outside the app, waiting for a person. */
+export interface ConfirmRequest { id: number; caller: string; command: string; args: Record<string, unknown> }
+
+interface ApiErrorDTO { code: number; message: string; detail: string }
+function callApi<T>(request: object): Promise<T> {
+  return tauriInvoke<T>('cmd_api', { request }).catch((e: ApiErrorDTO | string) => {
+    throw Object.assign(new Error(typeof e === 'string' ? e : e.detail), typeof e === 'string' ? {} : { code: e.message });
+  });
+}
+export const deviceApi = {
+  read:   <T,>(name: string | string[]) => callApi<T>({ method: 'read',
+    params: Array.isArray(name) ? { names: name } : { name } }),
+  write:  (name: string, value: unknown) =>
+    callApi<{ value: number | string }>({ method: 'write', params: { name, value } }).then(r => r.value),
+  invoke: <T = unknown,>(command: string, args: object = {}) =>
+    callApi<T>({ method: 'invoke', params: { command, args } }),
+};
+
+const INSTRUMENT_VARS = ['device.info', 'reference.dark', 'reference.dark_stale', 'reference.white', 'acquisition.live',
+  'acquisition.integration_time_ms', 'acquisition.averages', 'processing.mode'];
+
+export interface InstrumentState {
+  meta: DeviceMetadata | null; dark: boolean; darkStale: boolean; reference: boolean; live: boolean;
+  integration: number; averaging: number; mode: AcqParams['mode'];
+}
+
+interface CaptureResultDTO {
+  frame: FrameDTO & { mode: string; integration_ms: number; timestamp: number };
+  saved: null | { id: string; label: string; timestamp: number; tag: string;
+                  params: Partial<AcqParams>; file: string | null; file_error: string | null };
+}
+
+const DEFAULT_PARAMS: AcqParams = {
+  mode: 'intensity', acqMode: 'continuous', integration: 120, averaging: 4,
+  xUnit: 'nm', yUnit: 'au', lockAxes: false, stack: false,
+};
+
+function metaFromDTO(m: DeviceMetadataDTO | null): DeviceMetadata | null {
+  return m && {
+    port: m.port, manufacturer: m.manufacturer, model: m.model, serial: m.serial,
+    firmware: m.firmware, protocolVersion: m.protocol_version, pixels: m.pixels,
+    integMinMs: m.integ_min_ms, integMaxMs: m.integ_max_ms,
+    maxIntensity: m.max_intensity, sensor: m.sensor, lastSeq: m.last_seq,
+    droppedFrames: m.dropped_frames, lastCaptureMs: m.last_capture_ms,
+    timestamp: m.timestamp,
+  };
+}
 
 // ── IPC object ─────────────────────────────────────────────────────────────────
 
@@ -97,26 +137,39 @@ export const ipc = {
    *  attached — the browser has no serial ports at all, so it lists nothing
    *  rather than inventing devices. */
   discoverDevices: (): Promise<DeviceInfo[]> => IS_TAURI
-    ? tauriInvoke<DeviceRowDTO[]>('cmd_discover_devices').then(ds => ds.map(d => ({
+    ? deviceApi.invoke<DeviceRowDTO[]>('discover').then(ds => ds.map(d => ({
         id: d.id, name: d.name, model: d.model,
         status: d.status as DeviceInfo['status'],
         serial: d.serial, firmware: d.firmware,
       })))
     : Promise.resolve([]),
 
-  connectDevice: (deviceId: string): Promise<void> => IS_TAURI
-    ? tauriInvoke('cmd_connect_device', { deviceId })
+  connectDevice: (port: string): Promise<void> => IS_TAURI
+    ? deviceApi.invoke('connect', { port }).then(() => {})
     : Promise.resolve(),
 
   disconnectDevice: (): Promise<void> => IS_TAURI
-    ? tauriInvoke('cmd_disconnect_device')
+    ? deviceApi.invoke('disconnect').then(() => {})
     : Promise.resolve(),
 
   /** Install an S-record firmware image on `deviceId` and reconnect to it.
    *  Resolves with the firmware version the board reports afterwards. */
   updateFirmware: (deviceId: string, srec: string): Promise<string> => IS_TAURI
-    ? tauriInvoke<string>('cmd_update_firmware', { deviceId, srec })
+    ? deviceApi.invoke<string>('update_firmware', { device_id: deviceId, srec })
     : Promise.reject(new Error('Firmware update needs the desktop app')),
+
+  /** A script, the CLI or an agent asks for a privileged command; it waits until
+   *  `answerConfirm`. `onClosed` fires when a request is answered or times out. */
+  onConfirmRequests: (onRequest: (r: ConfirmRequest) => void, onClosed: (id: number) => void): (() => void) => {
+    if (!IS_TAURI) return () => {};
+    const stops: (() => void)[] = [];
+    listen<ConfirmRequest>('confirm-request', e => onRequest(e.payload)).then(fn => stops.push(fn));
+    listen<{ id: number }>('confirm-closed', e => onClosed(e.payload.id)).then(fn => stops.push(fn));
+    return () => stops.forEach(f => f());
+  },
+
+  answerConfirm: (id: number, approve: boolean): Promise<unknown> =>
+    deviceApi.invoke('confirm', { id, approve }),
 
   onFirmwareProgress: (cb: (stage: string, done: number, total: number) => void): (() => void) => {
     if (!IS_TAURI) return () => {};
@@ -127,36 +180,65 @@ export const ipc = {
     return () => { unlisten?.(); };
   },
 
-  /** Identity and limits of the connected instrument, or null when nothing is
-   *  connected. Never throws for "no device" — that is an empty state, not an error. */
-  getDeviceMetadata: (): Promise<DeviceMetadata | null> => IS_TAURI
-    ? tauriInvoke<DeviceMetadataDTO | null>('cmd_get_device_metadata').then(m => m && ({
-        port: m.port, manufacturer: m.manufacturer, model: m.model, serial: m.serial,
-        firmware: m.firmware, protocolVersion: m.protocol_version, pixels: m.pixels,
-        integMinMs: m.integ_min_ms, integMaxMs: m.integ_max_ms,
-        maxIntensity: m.max_intensity, sensor: m.sensor, lastSeq: m.last_seq,
-        droppedFrames: m.dropped_frames, lastCaptureMs: m.last_capture_ms,
-        timestamp: m.timestamp,
+  /** Everything the UI mirrors from the instrument, in one read. The backend
+   *  owns these; the UI never keeps its own copy as the truth. */
+  readInstrument: (): Promise<InstrumentState> => IS_TAURI
+    ? deviceApi.read<Record<string, unknown>>(INSTRUMENT_VARS).then(v => ({
+        meta: metaFromDTO(v['device.info'] as DeviceMetadataDTO | null),
+        dark: v['reference.dark'] as boolean,
+        darkStale: v['reference.dark_stale'] as boolean,
+        reference: v['reference.white'] as boolean,
+        live: v['acquisition.live'] as boolean,
+        integration: v['acquisition.integration_time_ms'] as number,
+        averaging: v['acquisition.averages'] as number,
+        mode: v['processing.mode'] as AcqParams['mode'],
       }))
-    : Promise.resolve(null),
+    : Promise.resolve({ meta: null, dark: false, darkStale: false, reference: false, live: false,
+        integration: 120, averaging: 4, mode: 'intensity' }),
 
-  scan: (params: AcqParams): Promise<Spectrum> => IS_TAURI
-    ? tauriInvoke<FrameDTO>('cmd_scan', { params: toRustParams(params) })
-        .then(f => frameToSpectrum(f, params))
-    : Promise.reject(new Error('No instrument: scanning needs the desktop app and a connected device.')),
+  /** Set an acquisition setting; resolves with the value the backend applied
+   *  (the GUI's requests are clamped to the device's range). */
+  writeSetting: (name: 'acquisition.integration_time_ms' | 'acquisition.averages' | 'workspace.active',
+                 value: number | string): Promise<number | string> => IS_TAURI
+    ? deviceApi.write(name, value)
+    : Promise.resolve(value),
 
-  startAcquisition: (params: AcqParams): Promise<void> => IS_TAURI
-    ? tauriInvoke('cmd_start_acquisition', { params: toRustParams(params) })
+  startLive: (): Promise<void> => IS_TAURI
+    ? deviceApi.invoke('start_live').then(() => {})
+    : noBackend('Live'),
+
+  stopLive: (): Promise<void> => IS_TAURI
+    ? deviceApi.invoke('stop_live').then(() => {})
     : Promise.resolve(),
 
-  /** Take one deliberate measurement of `averaging` scans, meaned. Resolves
-   *  with the finished spectrum; progress arrives via onCaptureProgress. */
-  capture: (params: AcqParams): Promise<Spectrum> => IS_TAURI
-    ? tauriInvoke<FrameDTO>('cmd_capture', { params: toRustParams(params) })
-        .then(f => frameToSpectrum(f, params))
-    : Promise.reject(new Error('Capturing needs the desktop app and a connected instrument.')),
+  /** One averaged measurement. The backend files it in the active workspace —
+   *  a database row and a .jdx file — exactly as it would for a script. */
+  /** An empty `label` lets the backend name it spectra_NNN. */
+  capture: (args: { id: string; label: string; tag: string; color: string }): Promise<{
+    spectrum: Spectrum; params: AcqParams; timestamp: number; label: string;
+    file: string | null; fileError: string | null; saved: boolean;
+  }> => IS_TAURI
+    ? deviceApi.invoke<CaptureResultDTO>('capture', args).then(r => {
+        const params = { ...DEFAULT_PARAMS, ...(r.saved?.params ?? {}), mode: r.frame.mode as AcqParams['mode'],
+          integration: r.frame.integration_ms } as AcqParams;
+        return {
+          spectrum: frameToSpectrum(r.frame, params), params, timestamp: r.frame.timestamp,
+          label: r.saved?.label ?? '',
+          file: r.saved?.file ?? null, fileError: r.saved?.file_error ?? null, saved: r.saved !== null,
+        };
+      })
+    : noBackend('Capturing'),
 
   /** Scan-by-scan progress of a capture in flight. */
+  /** A capture was filed by any caller — the GUI, a script, the CLI or an agent. */
+  onCaptureSaved: (cb: (sessionId: string, id: string) => void): (() => void) => {
+    if (!IS_TAURI) return () => {};
+    let unlisten: (() => void) | null = null;
+    listen<{ session_id: string; id: string }>('capture-saved', e => cb(e.payload.session_id, e.payload.id))
+      .then(fn => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  },
+
   onCaptureProgress: (cb: (done: number, total: number) => void): (() => void) => {
     if (!IS_TAURI) return () => {};
     let unlisten: (() => void) | null = null;
@@ -173,7 +255,7 @@ export const ipc = {
     : Promise.resolve(),
 
   stopAcquisition: (): Promise<void> => IS_TAURI
-    ? tauriInvoke('cmd_stop_acquisition')
+    ? deviceApi.invoke('stop_live').then(() => {})
     : Promise.resolve(),
 
   calibrateXcal: (): Promise<XCalResult> => IS_TAURI
@@ -185,29 +267,22 @@ export const ipc = {
     : new Promise(resolve => setTimeout(() =>
         resolve({ status: 'ok', rms: 0.018, coefficients: [400, 1.6], peaksFound: 12 }), 1400)),
 
-  /** Which calibrations the backend actually holds. The UI asks rather than
-   *  tracking its own copy — a dark frame lives in Rust, and a stale local
-   *  guess would claim a calibration that is not there. */
-  getCalibrationState: (): Promise<{ dark: boolean; reference: boolean }> => IS_TAURI
-    ? tauriInvoke<{ dark: boolean; reference: boolean }>('cmd_get_calibration_state')
-    : Promise.resolve({ dark: false, reference: false }),
-
   /** Store the spectrum currently on the plot as the dark or the reference.
    *  Tags what was measured rather than measuring again, so the calibration
    *  inherits the Averaging that produced it. */
   tagLastFrame: (which: 'dark' | 'reference'): Promise<CalResult> => IS_TAURI
-    ? tauriInvoke<CalResultDTO>('cmd_tag_last_frame', { which })
+    ? deviceApi.invoke<CalResultDTO>(which === 'dark' ? 'capture_dark' : 'capture_reference')
         .then(r => ({ status: r.status as CalResult['status'], rms: r.rms ?? undefined, warn: r.warn ?? undefined }))
-    : Promise.reject(new Error('Tagging a calibration needs the desktop app and a connected instrument.')),
+    : noBackend('Tagging a calibration'),
 
-  /** Discard a stored calibration frame: 'dark', 'reference' or 'all'. */
-  clearCalibration: (which: 'dark' | 'reference' | 'all'): Promise<void> => IS_TAURI
-    ? tauriInvoke('cmd_clear_calibration', { which })
+  /** Discard a stored calibration frame. */
+  clearCalibration: (which: 'dark' | 'reference'): Promise<void> => IS_TAURI
+    ? deviceApi.invoke(which === 'dark' ? 'clear_dark' : 'clear_reference').then(() => {})
     : Promise.resolve(),
 
   /** Instrument events, newest last. Empty until something has happened. */
   getDiagnostics: (): Promise<DiagEntry[]> => IS_TAURI
-    ? tauriInvoke<DiagEntryDTO[]>('cmd_get_diagnostics').then(es => es.map(e => ({
+    ? deviceApi.read<DiagEntryDTO[]>('device.diagnostics').then(es => es.map(e => ({
         id: e.id, ts: e.ts,
         severity: e.severity as DiagEntry['severity'],
         message: e.message,
@@ -238,15 +313,10 @@ export const ipc = {
       })))
     : Promise.resolve([]),
 
-  saveCapture: (capture: Capture): Promise<void> => IS_TAURI
-    ? tauriInvoke('cmd_save_capture', { capture: {
-        id: capture.id, session_id: capture.sessionId,
-        label: capture.label, timestamp: capture.timestamp,
-        tag: capture.tag, params_json: JSON.stringify(capture.params),
-        xs: Array.from(capture.xs), ys: Array.from(capture.ys),
-        color: capture.color, position: null,
-      }})
-    : Promise.resolve(),
+  /** Folder a workspace's .jdx files are written to. */
+  workspaceDir: (name: string): Promise<string | null> => IS_TAURI
+    ? tauriInvoke<string>('cmd_workspace_dir', { name })
+    : Promise.resolve(null),
 
   loadCaptures: (sessionId: string): Promise<Capture[]> => IS_TAURI
     ? tauriInvoke<CaptureRowDTO[]>('cmd_load_captures', { sessionId }).then(rows =>
@@ -255,7 +325,8 @@ export const ipc = {
           label: r.label ?? '', timestamp: r.timestamp,
           tag: r.tag ?? '', params: JSON.parse(r.params_json) as AcqParams,
           xs: new Float32Array(r.xs), ys: new Float32Array(r.ys),
-          color: r.color ?? '#1f5dff',
+          // Empty when the capture came from a script; the store colours it.
+          color: r.color ?? '',
         })))
     : Promise.resolve([]),
 
@@ -500,6 +571,7 @@ export const ipc = {
         ys: new Float32Array(event.payload.ys),
         timestamp: event.payload.timestamp,
         units: event.payload.units,
+        peak: event.payload.peak,
         // Only `mode` and the applied integration matter downstream —
         // LiveSpectrum uses store params for the rest and discards frames whose
         // mode no longer matches the UI.
@@ -508,7 +580,7 @@ export const ipc = {
           acqMode: 'continuous',
           integration: event.payload.integration_ms,
           averaging: 4,
-          lightOn: true, lightPower: 80, xUnit: 'nm', yUnit: 'au', lockAxes: false, stack: false,
+          xUnit: 'nm', yUnit: 'au', lockAxes: false, stack: false,
         },
       });
     }).then(fn => { unlisten = fn; });

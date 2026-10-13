@@ -1,0 +1,552 @@
+<title>JASPER Toolbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one screen. Menu bar + toolbar on top, controls | plot | captures & API log, status bar below.
+   Tokens: light = the app's existing "Warm Sand" (src/styles/tokens.css); dark = same hues, night bench. */
+:root{
+  --bg:#f5efe6; --paper:#fffdf8; --tint:#efe7d9; --tint-2:#e7ddcc;
+  --ink:#241f19; --ink-2:#4a4239; --muted:#8c8174; --line:#e8ddcd; --line-2:#d9cdb8;
+  --signal:#4b54c9; --signal-soft:#ecebfb; --on-signal:#ffffff;
+  --ok:#3f9168; --warn:#c8791f; --alarm:#bd4a3a;
+  --trace-live:#241f19; --trace-1:#1f5dff; --trace-2:#d97706; --trace-3:#059669; --trace-4:#db2777;
+  --grid:#ece3d4; --plot:#fffdf8; --scrim:rgba(36,31,25,.35);
+  --font-sans:"Geist",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --font-mono:"Geist Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --gap:10px; --pad:12px; --fs:13.5px; --fs-s:12px; --row:32px; --r-sm:7px; --r-md:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#13141a; --paper:#1a1c24; --tint:#22252f; --tint-2:#2a2d39;
+  --ink:#ebe7df; --ink-2:#c4bfb6; --muted:#8d8a95; --line:#2b2e3a; --line-2:#383c4b;
+  --signal:#8f96f2; --signal-soft:#262947; --on-signal:#12131a;
+  --ok:#5cbf8d; --warn:#e7a14a; --alarm:#ec7664;
+  --trace-live:#f1ece2; --trace-1:#6f9bff; --trace-2:#f2a94a; --trace-3:#3fcf9b; --trace-4:#f472b6;
+  --grid:#242733; --plot:#171920; --scrim:rgba(0,0,0,.55); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#13141a; --paper:#1a1c24; --tint:#22252f; --tint-2:#2a2d39;
+  --ink:#ebe7df; --ink-2:#c4bfb6; --muted:#8d8a95; --line:#2b2e3a; --line-2:#383c4b;
+  --signal:#8f96f2; --signal-soft:#262947; --on-signal:#12131a;
+  --ok:#5cbf8d; --warn:#e7a14a; --alarm:#ec7664;
+  --trace-live:#f1ece2; --trace-1:#6f9bff; --trace-2:#f2a94a; --trace-3:#3fcf9b; --trace-4:#f472b6;
+  --grid:#242733; --plot:#171920; --scrim:rgba(0,0,0,.55); color-scheme:dark}
+
+/* Density: the app's existing comfort / standard / lab presets (View menu). Display size only. */
+body[data-density="comfort"]{--gap:14px; --pad:16px; --fs:15px; --fs-s:13px; --row:40px}
+body[data-density="lab"]{--gap:7px; --pad:9px; --fs:12.5px; --fs-s:11px; --row:28px}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);font-size:var(--fs);line-height:1.45;font-feature-settings:"tnum"}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.app{height:100%;display:grid;grid-template-rows:auto auto 1fr auto;min-height:0}
+
+/* ---- menu bar ---- */
+.menubar{display:flex;align-items:center;gap:18px;padding:0 16px;height:44px;border-bottom:1px solid var(--line);background:var(--paper)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+.brand i{width:14px;height:14px;border-radius:4px;background:linear-gradient(135deg,var(--signal),var(--trace-3));display:block}
+.brand small{font-weight:500;color:var(--muted);font-size:var(--fs-s)}
+.menus{display:flex;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.menu{position:relative}
+.menu>button{background:none;border:0;padding:6px 10px;border-radius:var(--r-sm);color:var(--ink-2);white-space:nowrap}
+.menu>button:hover,.menu.open>button{background:var(--tint);color:var(--ink)}
+.drop{position:fixed;min-width:250px;background:var(--paper);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:0 12px 32px rgba(0,0,0,.14);padding:5px;z-index:40}
+.drop button{display:flex;width:100%;justify-content:space-between;gap:24px;background:none;border:0;padding:7px 10px;border-radius:6px;text-align:left}
+.drop button:hover:not(:disabled){background:var(--signal-soft)}
+.drop button:disabled{color:var(--muted);cursor:not-allowed}
+.drop kbd,.kbd{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.drop hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
+.headright{margin-left:auto;display:flex;align-items:center;gap:8px}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:999px;padding:2px;background:var(--tint)}
+.seg button{border:0;background:none;padding:3px 11px;border-radius:999px;font-size:var(--fs-s);color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600}
+.iconbtn{width:32px;height:30px;display:grid;place-items:center;border:1px solid var(--line-2);border-radius:999px;background:var(--paper)}
+.iconbtn svg{width:16px;height:16px}
+.wsbtn{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px 0 8px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--paper);max-width:340px;min-width:0}
+.wsbtn:hover{border-color:var(--signal)}
+.wsbtn .tag{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--signal);background:var(--signal-soft);padding:2px 6px;border-radius:4px}
+.wsbtn b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wsbtn .c{color:var(--muted);font-size:var(--fs-s);white-space:nowrap}
+.saved{display:inline-flex;gap:6px;font-size:10.5px;color:var(--ok)}
+.saved span{border:1px solid color-mix(in srgb,var(--ok) 40%,transparent);border-radius:4px;padding:0 4px}
+.toast{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:var(--fs-s);z-index:60;max-width:calc(100% - 32px)}
+.ws-list{display:flex;flex-direction:column;gap:6px}
+
+/* ---- toolbar ---- */
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--bg)}
+.tb{height:var(--row);display:inline-flex;align-items:center;gap:7px;padding:0 12px;border-radius:var(--r-sm);border:1px solid var(--line-2);background:var(--paper);font-weight:500;white-space:nowrap}
+.tb:hover:not(:disabled){border-color:var(--signal)}
+.tb:disabled{opacity:.45;cursor:not-allowed}
+.tb svg{width:15px;height:15px}
+.tb.primary{background:var(--signal);border-color:var(--signal);color:var(--on-signal)}
+.tb.on{background:var(--signal-soft);border-color:var(--signal);color:var(--signal)}
+.tb.held{border-color:var(--ok);color:var(--ok)}
+.tb .k{font-family:var(--font-mono);font-size:10.5px;opacity:.7}
+.sep{width:1px;height:24px;background:var(--line-2);margin:0 2px}
+.sel{height:var(--row);display:inline-flex;align-items:center;gap:6px;padding:0 4px 0 10px;border-radius:var(--r-sm);border:1px solid var(--line-2);background:var(--paper)}
+.sel span{color:var(--muted);font-size:var(--fs-s)}
+.sel select{border:0;background:none;font-weight:600;padding:4px 2px}
+.grow{flex:1}
+
+/* ---- body grid ---- */
+.body{display:grid;grid-template-columns:272px minmax(0,1fr) 300px;gap:var(--gap);padding:var(--gap) 16px;min-height:0}
+.col{display:flex;flex-direction:column;gap:var(--gap);min-height:0;min-width:0}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-md);padding:var(--pad);display:flex;flex-direction:column;gap:8px;min-width:0}
+.card h3{margin:0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:24px}
+.row .lbl{color:var(--ink-2)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-2);white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.ok .dot,.dot.ok{background:var(--ok)} .warn .dot{background:var(--warn)} .bad .dot{background:var(--alarm)}
+.pill.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+.num{display:flex;align-items:center;border:1px solid var(--line-2);border-radius:var(--r-sm);overflow:hidden;background:var(--bg)}
+.num input{width:100%;border:0;background:none;padding:5px 8px;text-align:right;font-family:var(--font-mono)}
+.num span{padding:0 9px;color:var(--muted);font-size:var(--fs-s)}
+.num button{border:0;background:var(--tint);width:30px;align-self:stretch}
+.hint{font-size:var(--fs-s);color:var(--muted)}
+.ref{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
+.tick{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;background:var(--tint);color:var(--muted)}
+.tick.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.tick.warn{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.link{background:none;border:0;color:var(--signal);padding:0;font-size:var(--fs-s)}
+.txt{border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--bg);padding:5px 8px;width:100%}
+
+/* ---- plot ---- */
+.plotcard{padding:0;gap:0;min-height:0;flex:1}
+.plothead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px var(--pad);border-bottom:1px solid var(--line)}
+.plothead b{font-size:14px}
+.plothead .meta{color:var(--muted);font-size:var(--fs-s)}
+.tools{margin-left:auto;display:flex;gap:4px}
+.tools button{border:1px solid var(--line-2);background:var(--bg);border-radius:6px;height:26px;padding:0 8px;font-size:var(--fs-s)}
+.tools button[aria-pressed="true"]{background:var(--signal-soft);border-color:var(--signal);color:var(--signal)}
+.banner{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:8px var(--pad) 0;padding:7px 10px;border-radius:var(--r-sm);background:color-mix(in srgb,var(--alarm) 14%,var(--paper));border:1px solid color-mix(in srgb,var(--alarm) 45%,transparent);color:var(--alarm);font-size:var(--fs-s)}
+.banner.warn{background:color-mix(in srgb,var(--warn) 14%,var(--paper));border-color:color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn)}
+.plotwrap{position:relative;flex:1;min-height:260px}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.legend{position:absolute;top:10px;right:14px;display:flex;flex-direction:column;gap:3px;font-size:11.5px;background:color-mix(in srgb,var(--paper) 88%,transparent);padding:6px 9px;border-radius:6px;border:1px solid var(--line)}
+.legend span{display:flex;align-items:center;gap:7px}
+.legend i{width:16px;height:0;border-top:2px solid}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted)}
+
+/* ---- captures + API log ---- */
+.caps{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow:auto}
+.cap{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;border:1px solid transparent}
+.cap:hover{background:var(--tint)}
+.cap.sel{border-color:var(--signal);background:var(--signal-soft)}
+.cap .sw{width:12px;height:3px;border-radius:2px}
+.cap .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap .m{color:var(--muted);font-size:11px}
+.cap .x{border:0;background:none;color:var(--muted);padding:0 4px}
+.log{flex:1;min-height:140px;overflow:auto;font-family:var(--font-mono);font-size:11.5px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px;display:flex;flex-direction:column;gap:3px}
+.log div{display:grid;grid-template-columns:auto auto 1fr;gap:8px;white-space:nowrap}
+.log .ts{color:var(--muted)}
+.log .who{font-size:10px;padding:0 5px;border-radius:4px;background:var(--tint);color:var(--ink-2)}
+.log .who.agent{background:var(--signal-soft);color:var(--signal)}
+.log .msg{overflow:hidden;text-overflow:ellipsis}
+.apicard{flex:1;min-height:0}
+
+/* ---- status bar ---- */
+.status{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;padding:5px 16px;border-top:1px solid var(--line);background:var(--paper);font-size:var(--fs-s);color:var(--ink-2)}
+.meter{display:inline-block;width:70px;height:5px;border-radius:3px;background:var(--tint-2);vertical-align:middle;margin-left:6px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--ok)}
+.status .right{margin-left:auto;color:var(--muted)}
+
+/* ---- dialog ---- */
+.scrim{position:fixed;inset:0;background:var(--scrim);display:grid;place-items:center;padding:16px;z-index:50}
+.dialog{width:min(520px,100%);max-height:90%;overflow:auto;background:var(--paper);border:1px solid var(--line-2);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 60px rgba(0,0,0,.25)}
+.dialog h2{margin:0;font-size:16px}
+.opt{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;padding:9px 10px;border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer}
+.opt:has(input:checked){border-color:var(--signal);background:var(--signal-soft)}
+.opt input{grid-row:span 2;margin-top:3px}
+.opt small{color:var(--muted)}
+.actions{display:flex;justify-content:flex-end;gap:8px}
+
+/* ---- responsive ---- */
+@media (max-width:1180px){
+  .body{grid-template-columns:260px minmax(0,1fr)}
+  .col.right{grid-column:1 / -1;flex-direction:row;flex-wrap:wrap}
+  .col.right>.card{flex:1 1 300px}
+}
+@media (max-width:760px){
+  .app{height:auto;min-height:100%}
+  .body{grid-template-columns:1fr;padding:var(--gap) 16px}
+  .col.center{order:-1}
+  .plotwrap{min-height:320px}
+  .menubar{flex-wrap:wrap;height:auto;padding:8px 16px;gap:8px}
+  .menus{order:3;width:100%}
+  .tb .lbl-long,.tb .k{display:none}
+  .status .right{margin-left:0}
+}
+</style>
+
+<div class="app">
+  <header class="menubar">
+    <div class="brand"><i></i>JASPER <small>Toolbox · mockup</small></div>
+    <nav class="menus" id="menus" aria-label="Main menu"></nav>
+    <div class="headright">
+      <button class="wsbtn" id="wsBtn" title="Switch workspace (⌘O)"><span class="tag">Workspace</span><b id="wsName">Mango ripeness · Oct</b><span class="c mono" id="wsCount">3 spectra</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
+      <button class="iconbtn" id="theme" title="Switch light / dark" aria-label="Switch light or dark theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <button class="tb held" id="connBtn" title="Instruments"><span class="dot ok"></span>JSP · 380B…3731</button>
+    <span class="sep"></span>
+    <button class="tb on" id="liveBtn" title="Live stream (L)">
+      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      <span id="liveLbl">Live</span><span class="k">L</span></button>
+    <button class="tb primary" id="capBtn" title="Capture an averaged spectrum (Space)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+      Capture<span class="k">Space</span></button>
+    <button class="tb held" id="darkBtn" title="Dark is held. Press to remove (D)">Dark ✓<span class="k">D</span></button>
+    <button class="tb held" id="refBtn" title="Reference is held. Press to remove (R)">Reference ✓<span class="k">R</span></button>
+    <span class="sep"></span>
+    <label class="sel"><span>Mode</span>
+      <select id="mode"><option value="intensity">Intensity</option><option value="absorbance" selected>Absorbance</option><option value="transmittance">Transmittance</option></select></label>
+    <label class="sel"><span>X axis</span>
+      <select id="xunit"><option value="px">pixel</option><option value="nm" disabled>nm · needs X-cal</option></select></label>
+    <label class="sel"><span>View</span>
+      <select id="view"><option value="overlay">Overlay</option><option value="stack">Stack</option></select></label>
+    <span class="grow"></span>
+    <button class="tb" id="exportBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>Export<span class="lbl-long">…</span></button>
+  </div>
+
+  <main class="body">
+    <!-- Left: instrument + acquisition controls -->
+    <section class="col left" aria-label="Controls">
+      <div class="card">
+        <h3>Instrument <span class="pill ok"><span class="dot"></span>Connected</span></h3>
+        <div class="row"><b>TCD1304 · RA2A1</b></div>
+        <div class="row mono hint"><span>serial 380B1C3537323731</span><span>fw 0.1</span></div>
+        <div class="row mono hint"><span>3694 px · DARK 16:28</span><span>/dev/ttyACM0</span></div>
+      </div>
+
+      <div class="card">
+        <h3>Acquisition</h3>
+        <div class="row"><span class="lbl">Integration time</span></div>
+        <div class="num"><input id="integ" type="number" value="25" min="10" max="1000" step="1" aria-label="Integration time in ms"><span>ms</span></div>
+        <div class="hint">Device range 10 – 1000 ms · commits on Enter or blur</div>
+        <div class="row" style="margin-top:4px"><span class="lbl">Averaging</span></div>
+        <div class="num"><button id="avgMinus" aria-label="Fewer averages">−</button><input id="avg" type="number" value="16" min="1" max="64" aria-label="Averaging"><button id="avgPlus" aria-label="More averages">+</button></div>
+      </div>
+
+      <div class="card">
+        <h3>References</h3>
+        <div class="ref"><span class="tick ok" id="dTick">✓</span><span>Dark</span><span class="mono hint" id="dWhen">22:10 · 25 ms</span></div>
+        <div class="ref"><span class="tick ok" id="rTick">✓</span><span>Reference</span><span class="mono hint" id="rWhen">22:10 · 25 ms</span></div>
+        <div class="hint">A dark taken at another integration time is flagged stale.</div>
+      </div>
+
+      <div class="card">
+        <h3>Sample</h3>
+        <input class="txt" id="tag" value="Mango 3 · face A" aria-label="Sample tag">
+        <div class="hint">Tag for the next capture</div>
+      </div>
+    </section>
+
+    <!-- Centre: the plot is the page -->
+    <section class="col center" aria-label="Spectrum">
+      <div class="card plotcard">
+        <div class="plothead">
+          <b id="ptitle">Absorbance</b>
+          <span class="meta mono" id="pmeta">Live · 16 avg · 25 ms</span>
+          <div class="tools" role="group" aria-label="Plot tools">
+            <button aria-pressed="true" data-tool="zoom" title="Wheel zooms the x axis">Zoom</button>
+            <button data-tool="box" title="Drag a box to zoom">Box</button>
+            <button data-tool="pan" title="Drag to pan">Pan</button>
+            <button id="resetZoom" title="Reset (double-click plot)">Reset</button>
+          </div>
+        </div>
+        <div id="bannerHost"></div>
+        <div class="plotwrap"><canvas id="plot" aria-label="Spectrum plot"></canvas><div class="legend" id="legend"></div></div>
+      </div>
+    </section>
+
+    <!-- Right: captures + API log -->
+    <section class="col right" aria-label="Session">
+      <div class="card">
+        <h3>Captures <span class="mono" id="capCount" style="letter-spacing:0">3</span></h3>
+        <div class="caps" id="caps"></div>
+        <div class="row"><button class="link" id="selAll">Select all</button><button class="link" id="exportSel">Export selected…</button></div>
+      </div>
+      <div class="card apicard">
+        <h3>Device API <span class="pill ok"><span class="dot"></span>ws://127.0.0.1:8765</span></h3>
+        <div class="hint">Every action below went through the same API that scripts, the CLI and agents use.</div>
+        <div class="log" id="log" aria-live="polite"></div>
+        <div class="row hint"><span>Pending approvals</span><b class="mono" id="pending">None</b></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="status">
+    <span><span class="dot ok" style="display:inline-block;margin-right:6px"></span>Connected · USB · 380B…3731</span>
+    <span class="mono" id="fps">10.0 fps</span>
+    <span>Peak <b class="mono" id="peak">62%</b> of swing<span class="meter"><i id="peakbar" style="width:62%"></i></span></span>
+    <span class="mono" id="cursor">x — · y —</span>
+    <span class="right mono" id="wsPath">~/JASPER/mango-ripeness-oct/ · Operator: tony</span>
+  </footer>
+</div>
+
+<div id="dlgHost"></div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s), root = document.documentElement;
+const css = n => getComputedStyle(root).getPropertyValue(n).trim() || getComputedStyle(document.body).getPropertyValue(n).trim();
+const N = 3694, ACTIVE0 = 32, ACTIVE1 = 3680, SWING = 29300;   // processed scale = max - raw
+
+/* ---------- state ---------- */
+const S = { live:true, mode:'absorbance', view:'overlay', integ:25, avg:16, dark:true, ref:true,
+  darkInteg:25, refInteg:25, x0:0, x1:N-1, tool:'zoom',
+  caps:[], sel:new Set(), hover:null, frame:0, last:null };
+
+/* ---------- synthetic but shaped like this detector: lamp hump, masked edge, absorption bands ---------- */
+const g = (x,c,w) => Math.exp(-(((x-c)/w)**2));
+const lamp = x => x<ACTIVE0||x>ACTIVE1 ? 0 : 9000*g(x,1850,900) + 2600*g(x,1250,260) + 1800*g(x,2600,320);
+const sample = (x,k=1) => lamp(x) * (1 - 0.55*k*g(x,1480,70) - 0.32*k*g(x,3050,140) - 0.12*k*g(x,2300,180));
+function frame(fn){ const a=new Float32Array(N), s=S.integ/25, n=60/Math.sqrt(S.avg);
+  for(let i=0;i<N;i++) a[i]=Math.min(SWING, 420 + fn(i)*s + (Math.random()-.5)*n);
+  return a; }
+const darkF = () => { const a=new Float32Array(N); for(let i=0;i<N;i++) a[i]=420; return a; };
+let D = darkF(), R = frame(lamp);
+const toMode = a => { if(S.mode==='intensity') return a;
+  const out=new Float32Array(N);
+  for(let i=0;i<N;i++){ const den=R[i]-D[i];
+    if(i<ACTIVE0||i>ACTIVE1||den<0.02*SWING){out[i]=NaN;continue}
+    const T=Math.max(1e-4,(a[i]-D[i])/den); out[i]= S.mode==='transmittance'?T:-Math.log10(T); }
+  return out; };
+
+/* ---------- API log: the GUI is one client of jasperd ---------- */
+const now = () => new Date().toTimeString().slice(0,8);
+function api(msg, who='gui'){ const d=document.createElement('div');
+  d.innerHTML=`<span class="ts">${now()}</span><span class="who ${who}">${who}</span><span class="msg"></span>`;
+  d.lastChild.textContent=msg; const L=$('#log'); L.appendChild(d); L.scrollTop=L.scrollHeight; }
+[['connect','serial=380B1C3537323731 → TCD1304 fw 0.1','gui'],['write','acquisition.averages = 16 ✓','gui'],
+ ['invoke','capture_dark → held (25 ms)','gui'],['invoke','capture_reference → held (25 ms)','gui'],
+ ['read','acquisition.saturated → false','agent'],['invoke','capture sample="Mango 3 · face A" ✓','script']]
+ .forEach(([m,t,w])=>api(`${m} ${t}`,w));
+
+/* ---------- captures ---------- */
+const traceVar = i => `--trace-${(i%4)+1}`;
+function addCap(label, k){ const id=S.caps.length;
+  const t=now(), file=`${slug(label)}_${t.replace(/:/g,'')}.jdx`;
+  S.caps.push({id,label,t,file,integ:S.integ,avg:S.avg,data:frame(x=>sample(x,k))}); S.sel.add(id); renderCaps(); return file; }
+const slug=s=>s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'capture';
+function renderCaps(){ const host=$('#caps'); host.innerHTML='';
+  S.caps.forEach((c,i)=>{ const el=document.createElement('div'); el.className='cap'+(S.sel.has(c.id)?' sel':'');
+    el.innerHTML=`<input type="checkbox" ${S.sel.has(c.id)?'checked':''} aria-label="Show on plot"><span class="sw" style="background:var(${traceVar(i)})"></span><span class="t"></span><button class="x" title="Remove capture" aria-label="Remove capture">×</button>`;
+    el.querySelector('.t').innerHTML=`<span></span><br><span class="m mono">${c.t} · ${c.integ} ms · ${c.avg} avg</span> <span class="saved" title="${c.file}"><span>DB</span><span>.jdx</span></span>`;
+    el.querySelector('.t span').textContent=c.label;
+    el.querySelector('input').onchange=()=>{S.sel.has(c.id)?S.sel.delete(c.id):S.sel.add(c.id);renderCaps()};
+    el.querySelector('.x').onclick=()=>{S.caps.splice(i,1);S.sel.delete(c.id);api(`invoke delete_capture id=${c.id}`);renderCaps()};
+    host.appendChild(el); });
+  $('#capCount').textContent=S.caps.length; $('#wsCount').textContent=`${S.caps.length} spectra`; legend(); }
+addCap('Mango 3 · face A',1.0); addCap('Mango 3 · face B',0.8); addCap('Mango 4 · face A',1.2); S.sel.delete(2); renderCaps();
+
+/* ---------- plot ---------- */
+const cv=$('#plot'), ctx=cv.getContext('2d');
+function legend(){ const L=$('#legend'); L.innerHTML='';
+  const items=[[S.live?'Live':'Frozen','--trace-live']].concat(S.caps.map((c,i)=>S.sel.has(c.id)?[c.label,traceVar(i)]:null).filter(Boolean));
+  items.forEach(([t,v])=>{const s=document.createElement('span');s.innerHTML=`<i style="border-color:var(${v})"></i>`;s.append(t);L.appendChild(s)}); }
+function draw(){
+  const r=cv.getBoundingClientRect(), dpr=devicePixelRatio||1;
+  if(cv.width!==Math.round(r.width*dpr)||cv.height!==Math.round(r.height*dpr)){cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr)}
+  ctx.setTransform(dpr,0,0,dpr,0,0); const W=r.width,H=r.height, L=58,Rr=14,T=14,B=34;
+  ctx.fillStyle=css('--plot'); ctx.fillRect(0,0,W,H);
+  const series=[]; if(S.last) series.push([toMode(S.last),css('--trace-live'),1.6]);
+  S.caps.forEach((c,i)=>{ if(S.sel.has(c.id)) series.push([toMode(c.data),css(traceVar(i)),1.2]); });
+  // y range over visible window
+  let lo=Infinity,hi=-Infinity; const i0=Math.max(0,Math.floor(S.x0)), i1=Math.min(N-1,Math.ceil(S.x1));
+  series.forEach(([a],k)=>{const off=S.view==='stack'?k:0;for(let i=i0;i<=i1;i++){const v=a[i];if(v===v){lo=Math.min(lo,v+off*stackStep());hi=Math.max(hi,v+off*stackStep())}}});
+  if(!isFinite(lo)){lo=0;hi=1} const pad=(hi-lo)*.06||1; lo-=pad; hi+=pad;
+  if(S.mode==='intensity'){lo=Math.min(lo,0)}
+  const X=i=>L+(i-S.x0)/(S.x1-S.x0)*(W-L-Rr), Y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+  // grid + ticks
+  ctx.strokeStyle=css('--grid'); ctx.fillStyle=css('--muted'); ctx.lineWidth=1; ctx.font=`11px ${css('--font-mono')}`;
+  const ty=niceTicks(lo,hi,5), tx=niceTicks(S.x0,S.x1,7);
+  ctx.textAlign='right'; ty.forEach(v=>{const y=Y(v);ctx.beginPath();ctx.moveTo(L,y);ctx.lineTo(W-Rr,y);ctx.stroke();ctx.fillText(fmt(v),L-8,y+4)});
+  ctx.textAlign='center'; tx.forEach(v=>{const x=X(v);ctx.beginPath();ctx.moveTo(x,T);ctx.lineTo(x,H-B);ctx.stroke();ctx.fillText(Math.round(v),x,H-B+16)});
+  ctx.fillText('pixel',(L+W-Rr)/2,H-4);
+  ctx.save();ctx.translate(13,(T+H-B)/2);ctx.rotate(-Math.PI/2);ctx.fillText(yUnit(),0,0);ctx.restore();
+  // masked band (dark window) shading
+  const mx0=X(16),mx1=X(28); if(mx1>L&&S.mode==='intensity'){ctx.fillStyle=css('--tint');ctx.fillRect(Math.max(L,mx0),T,Math.min(W-Rr,mx1)-Math.max(L,mx0),H-T-B)}
+  // traces
+  ctx.save(); ctx.beginPath(); ctx.rect(L,T,W-L-Rr,H-T-B); ctx.clip();
+  series.slice().reverse().forEach(([a,col,lw],kk)=>{ const k=series.length-1-kk, off=S.view==='stack'?k*stackStep():0;
+    ctx.strokeStyle=col; ctx.lineWidth=lw; ctx.beginPath(); let pen=false;
+    const step=Math.max(1,Math.floor((i1-i0)/(W*1.5)));
+    for(let i=i0;i<=i1;i+=step){const v=a[i]; if(v!==v){pen=false;continue} const x=X(i),y=Y(v+off); pen?ctx.lineTo(x,y):ctx.moveTo(x,y); pen=true}
+    ctx.stroke(); });
+  // cursor
+  if(S.hover!=null&&S.last){ const i=Math.round(S.hover), v=toMode(S.last)[i]; const x=X(i);
+    ctx.strokeStyle=css('--signal'); ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(x,T); ctx.lineTo(x,H-B); ctx.stroke(); ctx.setLineDash([]);
+    if(v===v){ctx.fillStyle=css('--signal');ctx.beginPath();ctx.arc(x,Y(v),3.5,0,7);ctx.fill()}
+    $('#cursor').textContent=`x ${i} px · y ${v===v?fmt(v)+' '+yUnit():'masked'}`; }
+  ctx.restore();
+  S._X={L,W,Rr};
+}
+const stackStep=()=>S.mode==='intensity'?3000:S.mode==='absorbance'?0.25:0.2;
+const yUnit=()=>S.mode==='intensity'?'counts':S.mode==='absorbance'?'AU':'T';
+const fmt=v=>Math.abs(v)>=100?Math.round(v).toLocaleString():v.toFixed(3);
+function niceTicks(a,b,n){const span=b-a,st=Math.pow(10,Math.floor(Math.log10(span/n))),e=span/n/st,step=st*(e>5?10:e>2?5:e>1?2:1);
+  const out=[];for(let v=Math.ceil(a/step)*step;v<=b;v+=step)out.push(+v.toFixed(6));return out}
+
+/* ---------- live loop at ~10 fps ---------- */
+let lastT=performance.now(), fpsAcc=0, fpsN=0;
+function tick(){ if(S.live){ S.last=frame(x=>sample(x,1+0.04*Math.sin(S.frame/12))); S.frame++;
+    const t=performance.now(); fpsAcc+=t-lastT; fpsN++; lastT=t; if(fpsN===10){$('#fps').textContent=(1000/(fpsAcc/10)).toFixed(1)+' fps';fpsAcc=fpsN=0} }
+  let pk=0; if(S.last) for(let i=ACTIVE0;i<ACTIVE1;i++) pk=Math.max(pk,S.last[i]-420);
+  const pct=Math.round(pk/(SWING-420)*100); $('#peak').textContent=pct+'%'; $('#peakbar').style.width=Math.min(100,pct)+'%';
+  $('#peakbar').style.background=pct>=98?css('--alarm'):pct>85?css('--warn'):css('--ok');
+  banners(pct); draw(); }
+setInterval(tick,100); S.last=frame(x=>sample(x,1));
+
+function banners(pct){ const host=$('#bannerHost'); let html='';
+  if(pct>=98) html=`<div class="banner">Saturated: the brightest pixels hit the end of the detector's swing. Lower the integration time.<button class="link" data-act="halve">Set ${Math.max(10,Math.round(S.integ/2))} ms</button></div>`;
+  else if(S.dark&&S.darkInteg!==S.integ) html=`<div class="banner warn">Dark is stale: taken at ${S.darkInteg} ms, now ${S.integ} ms. Retake it before trusting absorbance.<button class="link" data-act="redark">Retake dark</button></div>`;
+  else if(S.mode!=='intensity'&&!(S.dark&&S.ref)) html=`<div class="banner warn">${S.mode[0].toUpperCase()+S.mode.slice(1)} needs a dark and a reference. Take them from the toolbar.</div>`;
+  if(host.dataset.h!==html){host.innerHTML=html;host.dataset.h=html;
+    host.querySelector('[data-act="halve"]')?.addEventListener('click',()=>setInteg(Math.max(10,Math.round(S.integ/2))));
+    host.querySelector('[data-act="redark"]')?.addEventListener('click',()=>takeDark()); } }
+
+/* ---------- actions (each logs its API call) ---------- */
+function setLive(v){S.live=v;$('#liveBtn').classList.toggle('on',v);$('#liveLbl').textContent=v?'Live':'Frozen';
+  $('#pmeta').textContent=`${v?'Live':'Frozen'} · ${S.avg} avg · ${S.integ} ms`;api(`invoke ${v?'start_live':'stop_live'}`);legend()}
+function setInteg(v){v=Math.max(10,Math.min(1000,Math.round(v)));S.integ=v;$('#integ').value=v;
+  $('#pmeta').textContent=`${S.live?'Live':'Frozen'} · ${S.avg} avg · ${v} ms`;api(`write acquisition.integration_time_ms = ${v} ✓`);refs()}
+function setAvg(v){v=Math.max(1,Math.min(64,v));S.avg=v;$('#avg').value=v;$('#pmeta').textContent=`${S.live?'Live':'Frozen'} · ${v} avg · ${S.integ} ms`;api(`write acquisition.averages = ${v} ✓`)}
+function takeDark(){ if(S.dark&&S.darkInteg===S.integ){S.dark=false;api('invoke clear_dark');} else {S.dark=true;S.darkInteg=S.integ;D=darkF();api(`invoke capture_dark → held (${S.integ} ms)`)} refs() }
+function takeRef(){ if(S.ref){S.ref=false;api('invoke clear_reference')} else {S.ref=true;S.refInteg=S.integ;R=frame(lamp);api(`invoke capture_reference → held (${S.integ} ms)`)} refs() }
+function refs(){ const d=$('#darkBtn'),r=$('#refBtn'), stale=S.dark&&S.darkInteg!==S.integ;
+  d.className='tb'+(S.dark?' held':''); d.firstChild.textContent=S.dark?(stale?'Dark ! ':'Dark ✓'):'Dark';
+  r.className='tb'+(S.ref?' held':''); r.firstChild.textContent=S.ref?'Reference ✓':'Reference';
+  $('#dTick').className='tick '+(S.dark?(stale?'warn':'ok'):''); $('#dTick').textContent=S.dark?(stale?'!':'✓'):'–';
+  $('#rTick').className='tick '+(S.ref?'ok':''); $('#rTick').textContent=S.ref?'✓':'–';
+  $('#dWhen').textContent=S.dark?`${now().slice(0,5)} · ${S.darkInteg} ms${stale?' · stale':''}`:'not held';
+  $('#rWhen').textContent=S.ref?`${now().slice(0,5)} · ${S.refInteg} ms`:'not held'; }
+function capture(){ const label=$('#tag').value.trim()||`Capture ${S.caps.length+1}`;
+  const file=addCap(label,0.8+Math.random()*.5);
+  api(`invoke capture sample="${label}" → db ✓ · ${WS.cur.dir}/${file} ✓`); toast(`Saved to the database and ${WS.cur.dir}/${file}`); }
+function toast(t){const d=document.createElement('div');d.className='toast';d.setAttribute('role','status');d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
+
+/* ---------- workspaces: the named container you work in (today's Session) ---------- */
+const WS={list:[{name:'Mango ripeness · Oct',dir:'~/JASPER/mango-ripeness-oct',n:3,when:'today'},
+  {name:'Soil P assay · batch 4',dir:'~/JASPER/soil-p-assay-batch-4',n:42,when:'9 Oct'},
+  {name:'Neon line check',dir:'~/JASPER/neon-line-check',n:6,when:'2 Oct'}]};
+WS.cur=WS.list[0];
+function openWs(w){WS.cur=w;$('#wsName').textContent=w.name;$('#wsPath').textContent=`${w.dir}/ · Operator: tony`;
+  if(w!==WS.list[0]){S.caps=[];S.sel.clear();for(let i=0;i<Math.min(w.n,4);i++)addCap(`${w.name.split(' ·')[0]} ${i+1}`,0.7+i*.15)}
+  renderCaps();api(`invoke open_workspace name="${w.name}" → ${w.n} spectra`);document.title=`${w.name} — JASPER`}
+function wsDlg(){dlg('Workspaces',`<div class="ws-list">${WS.list.map((w,i)=>`<label class="opt"><input type="radio" name="ws" value="${i}" ${w===WS.cur?'checked':''}><b>${w.name}</b><small class="mono">${w.n} spectra · ${w.when} · ${w.dir}/</small></label>`).join('')}</div>
+  <p class="hint" style="margin:0">Each workspace has its own folder. Every capture is saved twice: a row in the database and a .jdx file in the folder.</p>`,
+  'Open',h=>openWs(WS.list[+h.querySelector('input:checked').value]))}
+function newWsDlg(){dlg('New workspace',`<label class="hint" for="nwn">Name</label><input class="txt" id="nwn" value="Brix calibration set">
+  <label class="hint" for="nwo">Operator</label><input class="txt" id="nwo" value="tony">
+  <p class="hint mono" style="margin:0" id="nwp">Folder: ~/JASPER/brix-calibration-set/</p>`,'Create',h=>{const n=h.querySelector('#nwn').value.trim()||'Untitled';
+  const w={name:n,dir:`~/JASPER/${slug(n)}`,n:0,when:'today'};WS.list.unshift(w);S.caps=[];S.sel.clear();openWs(w);toast(`Created ${w.dir}/`)});
+  const i=$('#nwn');i.oninput=()=>$('#nwp').textContent=`Folder: ~/JASPER/${slug(i.value)}/`}
+$('#wsBtn').onclick=wsDlg;
+function setMode(m){S.mode=m;$('#mode').value=m;$('#ptitle').textContent=m[0].toUpperCase()+m.slice(1);api(`write processing.mode = ${m} ✓`)}
+
+$('#liveBtn').onclick=()=>setLive(!S.live);
+$('#capBtn').onclick=capture; $('#darkBtn').onclick=takeDark; $('#refBtn').onclick=takeRef;
+$('#mode').onchange=e=>setMode(e.target.value);
+$('#view').onchange=e=>{S.view=e.target.value};
+$('#integ').onchange=e=>setInteg(+e.target.value);
+$('#integ').onkeydown=e=>{if(e.key==='Enter')e.target.blur()};
+$('#avg').onchange=e=>setAvg(+e.target.value);
+$('#avgMinus').onclick=()=>setAvg(S.avg-1); $('#avgPlus').onclick=()=>setAvg(S.avg+1);
+$('#selAll').onclick=()=>{S.caps.forEach(c=>S.sel.add(c.id));renderCaps()};
+$('#exportBtn').onclick=()=>exportDlg(); $('#exportSel').onclick=()=>exportDlg(true);
+$('#connBtn').onclick=()=>instrumentsDlg();
+
+/* ---------- plot interaction ---------- */
+document.querySelectorAll('.tools [data-tool]').forEach(b=>b.onclick=()=>{S.tool=b.dataset.tool;
+  document.querySelectorAll('.tools [data-tool]').forEach(o=>o.setAttribute('aria-pressed',o===b))});
+const pxAt=e=>{const r=cv.getBoundingClientRect(),{L,W,Rr}=S._X||{L:58,W:r.width,Rr:14};return S.x0+(e.clientX-r.left-L)/(W-L-Rr)*(S.x1-S.x0)};
+cv.onmousemove=e=>{const p=pxAt(e);S.hover=p>=S.x0&&p<=S.x1?p:null; if(drag){const d=drag.p-p; if(S.tool==='pan'){S.x0=clampX(drag.x0+d);S.x1=S.x0+(drag.x1-drag.x0)}}};
+cv.onmouseleave=()=>{S.hover=null;$('#cursor').textContent='x — · y —'};
+cv.onwheel=e=>{e.preventDefault();const p=pxAt(e),k=e.deltaY>0?1.2:1/1.2;S.x0=Math.max(0,p-(p-S.x0)*k);S.x1=Math.min(N-1,p+(S.x1-p)*k)};
+let drag=null; const clampX=v=>Math.max(0,Math.min(N-1-(S.x1-S.x0),v));
+cv.onmousedown=e=>{drag={p:pxAt(e),x0:S.x0,x1:S.x1}};
+window.addEventListener('mouseup',e=>{ if(drag&&S.tool==='box'){const a=drag.p,b=pxAt(e);if(Math.abs(a-b)>8){S.x0=Math.max(0,Math.min(a,b));S.x1=Math.min(N-1,Math.max(a,b))}} drag=null});
+const reset=()=>{S.x0=0;S.x1=N-1}; cv.ondblclick=reset; $('#resetZoom').onclick=reset;
+
+/* ---------- keyboard ---------- */
+document.addEventListener('keydown',e=>{ if(e.target.matches('input,select,textarea'))return;
+  if(e.key===' '){e.preventDefault();capture()} else if(e.key==='l')setLive(!S.live)
+  else if(e.key==='d')takeDark(); else if(e.key==='r')takeRef(); else if(e.key==='Escape')closeAll(); });
+
+/* ---------- menus ---------- */
+const MENUS={
+  File:[['New workspace…','⌘N',()=>newWsDlg()],['Open workspace…','⌘O',()=>wsDlg()],
+        ['Show workspace folder','',()=>toast(`Opens ${WS.cur.dir}/ in the file manager`)],['Data folder…','',()=>simpleDlg('Data folder','Workspaces are created under ~/JASPER/. Change it here; existing workspaces stay where they are.')],'-',
+        ['Export…','⌘E',()=>exportDlg()],['Recent files',''],'-',['Quit','⌘Q']],
+  Device:[['Instruments…','',()=>instrumentsDlg()],['Disconnect',''],'-',
+          ['Firmware update…','',()=>firmwareDlg()],['Diagnostics','',()=>diagDlg()]],
+  Acquire:[['Live / Freeze','L',()=>setLive(!S.live)],['Capture','Space',capture],'-',
+           ['Take / remove dark','D',takeDark],['Take / remove reference','R',takeRef],'-',
+           ['Burst capture…','planned',null],['Auto-expose','planned',null]],
+  Process:[['Intensity','',()=>setMode('intensity')],['Absorbance','',()=>setMode('absorbance')],['Transmittance','',()=>setMode('transmittance')],'-',
+           ['Overlay traces','',()=>{S.view='overlay';$('#view').value='overlay'}],['Stack traces','',()=>{S.view='stack';$('#view').value='stack'}],'-',
+           ['Pre-processing pipeline…','stage 3',null]],
+  Calibrate:[['X-axis calibration (Ne/Ar)…','needs lamp',null],['Verify calibration','stage 4',null]],
+  View:[['Light theme','',()=>setTheme('light')],['Dark theme','',()=>setTheme('dark')],'-',
+        ['Density: Comfort','',()=>setDensity('comfort')],['Density: Standard','',()=>setDensity('standard')],['Density: Compact','',()=>setDensity('lab')],'-',
+        ['Reset zoom','dbl-click',reset]],
+  Help:[['Command palette','⌘K',()=>simpleDlg('Command palette','Every menu item is also a command. Type to search.')],['Keyboard shortcuts','?',()=>simpleDlg('Keyboard shortcuts','Space capture · L live / freeze · D dark · R reference · ⌘E export · ⌘K commands · Esc close')]]
+};
+const nav=$('#menus'); let openDrop=null;
+Object.entries(MENUS).forEach(([name,items])=>{ const m=document.createElement('div'); m.className='menu';
+  const b=document.createElement('button'); b.textContent=name; b.setAttribute('aria-haspopup','true'); m.appendChild(b); nav.appendChild(m);
+  b.onclick=ev=>{ev.stopPropagation(); const was=m.classList.contains('open'); closeAll(); if(was)return;
+    m.classList.add('open'); const d=document.createElement('div'); d.className='drop'; d.setAttribute('role','menu');
+    items.forEach(it=>{ if(it==='-'){d.appendChild(document.createElement('hr'));return}
+      const [t,k,fn]=it, x=document.createElement('button'); x.setAttribute('role','menuitem'); x.innerHTML=`<span></span><kbd>${k}</kbd>`; x.firstChild.textContent=t;
+      if(!fn) x.disabled=true; else x.onclick=()=>{closeAll();fn()}; d.appendChild(x)});
+    const r=b.getBoundingClientRect(); d.style.left=Math.min(r.left,innerWidth-266)+'px'; d.style.top=(r.bottom+4)+'px';
+    document.body.appendChild(d); openDrop=d; };
+});
+function closeAll(){document.querySelectorAll('.menu.open').forEach(m=>m.classList.remove('open'));openDrop?.remove();openDrop=null;$('#dlgHost').innerHTML=''}
+document.addEventListener('click',e=>{if(openDrop&&!openDrop.contains(e.target))closeAll()});
+nav.addEventListener('scroll',()=>{if(openDrop)closeAll()});
+
+/* ---------- dialogs ---------- */
+function dlg(title,bodyHTML,okLabel,onOk){ const h=$('#dlgHost');
+  h.innerHTML=`<div class="scrim"><div class="dialog" role="dialog" aria-modal="true" aria-label="${title}"><h2>${title}</h2>${bodyHTML}<div class="actions"><button class="tb" data-x>Close</button>${okLabel?`<button class="tb primary" data-ok>${okLabel}</button>`:''}</div></div></div>`;
+  h.querySelector('[data-x]').onclick=()=>h.innerHTML=''; h.querySelector('.scrim').onclick=e=>{if(e.target.classList.contains('scrim'))h.innerHTML=''};
+  h.querySelector('[data-ok]')?.addEventListener('click',()=>{onOk?.(h);h.innerHTML=''}); h.querySelector('[data-ok],[data-x]').focus(); }
+const simpleDlg=(t,txt)=>dlg(t,`<p class="hint" style="margin:0;font-size:var(--fs)">${txt}</p>`);
+function exportDlg(selOnly){ const n=selOnly?S.sel.size:S.caps.length;
+  const F=[['csv','CSV (.csv)','# key: value metadata header, then pixel + one column per spectrum'],
+    ['xlsx','Excel (.xlsx)','Spectra sheet plus a metadata sheet. Opens in Excel 2007 and later'],
+    ['txt','Text (.txt)','Tab-separated, same header and columns as CSV'],
+    ['jcamp-dx','JCAMP-DX (.jdx)','One file per spectrum, the same files the workspace already holds']];
+  dlg(`Export ${n} capture${n===1?'':'s'}`, F.map(([id,t,s],i)=>`<label class="opt"><input type="radio" name="fmt" value="${id}" ${i?'':'checked'}><b>${t}</b><small>${s}</small></label>`).join(''),
+    'Choose file…', h=>api(`invoke export format=${h.querySelector('input:checked').value} captures=${n} ✓`)); }
+function instrumentsDlg(){ dlg('Instruments', `<label class="opt"><input type="radio" name="dev" checked><b>TCD1304 · 380B1C3537323731</b><small class="mono">/dev/ttyACM0 · fw 0.1 · connected</small></label>
+  <p class="hint" style="margin:0">Found by probing each serial port with *IDN?. Plug another unit in and it appears here.</p>`, 'Rescan', ()=>api('invoke discover → 1 unit')); }
+function firmwareDlg(){ dlg('Firmware update', `<div class="row"><span class="lbl">Installed</span><b class="mono">0.1</b></div>
+  <input type="file" accept=".srec,.s19,.mot" class="txt" aria-label="Firmware file">
+  <p class="hint" style="margin:0">Use the .srec file supplied by CheckAg. If an update is interrupted the instrument waits in its bootloader; run the update again to finish it.</p>
+  <p class="hint" style="margin:0;color:var(--warn)">Privileged: when a script or agent starts this, the app asks a person to approve it first.</p>`, 'Install', ()=>api('invoke firmware.upgrade → waiting for approval','gui')); }
+function diagDlg(){ dlg('Diagnostics', `<div class="log" style="min-height:180px">${
+  [['22:09:58','info','probe /dev/ttyACM0 → IDN TCD1304'],['22:09:58','info','METADATA pixels=3694 dark=16:28 active=32:3680'],['22:10:02','info','I25 → applied 25 ms'],['22:12:40','warn','CRC mismatch, resynced after 1 frame']]
+  .map(([t,l,m])=>`<div><span class="ts">${t}</span><span class="who">${l}</span><span class="msg">${m}</span></div>`).join('')}</div>`); }
+
+/* ---------- theme + density ---------- */
+function setTheme(t){root.setAttribute('data-theme',t);try{localStorage.setItem('jt-theme',t)}catch(e){}}
+$('#theme').onclick=()=>{const dark=root.getAttribute('data-theme')==='dark'||(!root.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme: dark)').matches);setTheme(dark?'light':'dark')};
+function setDensity(d){document.body.dataset.density=d;try{localStorage.setItem('jt-density',d)}catch(e){}}
+try{const t=localStorage.getItem('jt-theme');if(t)setTheme(t);setDensity(localStorage.getItem('jt-density')||'standard')}catch(e){setDensity('standard')}
+refs(); legend(); tick();
+})();
+</script>

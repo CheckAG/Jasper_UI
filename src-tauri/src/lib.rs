@@ -1,6 +1,7 @@
 mod state;
 pub mod instrument; // pub: integration tests drive the driver against the protocol simulator
 pub mod storage;
+mod api;
 mod commands;
 
 use tauri::Manager;
@@ -23,7 +24,23 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)
                 .expect("failed to create app data dir");
 
-            app.manage(AppState::new(&data_dir));
+            let home = app.path().home_dir().expect("failed to resolve home dir");
+            app.manage(AppState::new(&data_dir, storage::files::spectra_root(&home)));
+
+            // Scripts, the CLI and agents reach the Device API here. A second
+            // copy of the app finds the port taken and runs without it.
+            match std::net::TcpListener::bind(("127.0.0.1", api::server::PORT)) {
+                Ok(listener) => {
+                    let handle = app.handle().clone();
+                    let events: std::sync::Arc<dyn api::Events> = std::sync::Arc::new(handle.clone());
+                    let hub = handle.state::<AppState>().subscribers.clone();
+                    api::server::serve(listener, std::sync::Arc::new(move |caller, req| {
+                        api::dispatch(&handle.state::<AppState>(), events.clone(), caller, req)
+                    }), hub);
+                    eprintln!("[api] listening on 127.0.0.1:{}", api::server::PORT);
+                }
+                Err(e) => eprintln!("[api] not listening on 127.0.0.1:{}: {e}", api::server::PORT),
+            }
 
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -35,29 +52,15 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Instrument
-            cmd_discover_devices,
-            cmd_connect_device,
-            cmd_disconnect_device,
-            cmd_get_device_metadata,
-            cmd_get_diagnostics,
-            cmd_scan,
-            cmd_capture,
-            cmd_start_acquisition,
-            cmd_stop_acquisition,
+            // Instrument — everything but x-cal goes through the Device API
+            cmd_api,
             cmd_frame_consumed,
-            cmd_calibrate_dark,
-            cmd_calibrate_reference,
             cmd_calibrate_xcal,
-            cmd_get_calibration_state,
-            cmd_clear_calibration,
-            cmd_tag_last_frame,
-            cmd_update_firmware,
             // Storage
             cmd_save_session,
             cmd_load_sessions,
             cmd_delete_session,
-            cmd_save_capture,
+            cmd_workspace_dir,
             cmd_load_captures,
             cmd_delete_capture,
             cmd_count_captures,

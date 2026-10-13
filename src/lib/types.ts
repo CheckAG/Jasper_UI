@@ -16,8 +16,6 @@ export interface AcqParams {
   acqMode:     AcqMode;
   integration: number;   // ms
   averaging:   number;   // scan count
-  lightOn:     boolean;
-  lightPower:  number;   // 0–100 %
   xUnit:       XUnit;
   yUnit:       YUnit;
   lockAxes:    boolean;
@@ -34,6 +32,8 @@ export interface Spectrum {
    *  "counts" raw · "counts_d" dark-subtracted · "ratio" T/R · "abs" absorbance.
    *  Empty/undefined → mock-styled data shaped for params.mode. */
   units?:    string;
+  /** Brightest raw pixel as a fraction of the device's full scale (driver.rs `peak`). */
+  peak?:     number;
 }
 
 // --- Captured spectrum ---
@@ -231,7 +231,7 @@ export interface AuditEntry {
 }
 
 // --- Export ---
-export type ExportFormat = 'jcamp-dx' | 'csv-xy' | 'csv-matrix' | 'svg' | 'pdf' | 'xlsx';
+export type ExportFormat = 'jcamp-dx' | 'csv-xy' | 'csv-matrix' | 'svg' | 'pdf' | 'xlsx' | 'csv' | 'txt';
 
 export interface ExportOptions {
   format:           ExportFormat;

@@ -34,6 +34,9 @@ pub struct CaptureRow {
     pub ys:          Vec<f32>,
     pub color:       Option<String>,
     pub position:    Option<i64>,
+    /// The capture's .jdx file, set by the backend when it is written.
+    #[serde(default)]
+    pub file_path:   Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -64,6 +67,13 @@ pub fn open(path: &str) -> Result<Connection> {
     let conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
     conn.execute_batch(include_str!("schema.sql"))?;
+    // Databases made before captures were written to files lack the column.
+    let has_file_path: bool = conn
+        .prepare("SELECT 1 FROM pragma_table_info('captures') WHERE name='file_path'")?
+        .exists([])?;
+    if !has_file_path {
+        conn.execute_batch("ALTER TABLE captures ADD COLUMN file_path TEXT")?;
+    }
     Ok(conn)
 }
 
@@ -119,11 +129,11 @@ pub fn insert_capture(conn: &Connection, row: &CaptureRow) -> Result<()> {
     let ys_blob = f32s_to_bytes(&row.ys);
     conn.execute(
         "INSERT OR REPLACE INTO captures
-         (id, session_id, label, timestamp, tag, params_json, xs, ys, color, position)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+         (id, session_id, label, timestamp, tag, params_json, xs, ys, color, position, file_path)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
         params![
             row.id, row.session_id, row.label, row.timestamp, row.tag,
-            row.params_json, xs_blob, ys_blob, row.color, row.position
+            row.params_json, xs_blob, ys_blob, row.color, row.position, row.file_path
         ],
     )?;
     Ok(())
@@ -131,7 +141,7 @@ pub fn insert_capture(conn: &Connection, row: &CaptureRow) -> Result<()> {
 
 pub fn load_captures(conn: &Connection, session_id: &str) -> Result<Vec<CaptureRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id, session_id, label, timestamp, tag, params_json, xs, ys, color, position
+        "SELECT id, session_id, label, timestamp, tag, params_json, xs, ys, color, position, file_path
          FROM captures WHERE session_id=?1 ORDER BY timestamp ASC"
     )?;
     let rows = stmt.query_map([session_id], |r| {
@@ -148,14 +158,35 @@ pub fn load_captures(conn: &Connection, session_id: &str) -> Result<Vec<CaptureR
             ys:          bytes_to_f32s(&ys_blob),
             color:       r.get(8)?,
             position:    r.get(9)?,
+            file_path:   r.get(10)?,
         })
     })?;
     rows.collect()
 }
 
-pub fn delete_capture(conn: &Connection, id: &str) -> Result<()> {
+/// Deletes the row; returns the capture's file path, if it had one.
+pub fn delete_capture(conn: &Connection, id: &str) -> Result<Option<String>> {
+    let file: Option<String> = conn
+        .query_row("SELECT file_path FROM captures WHERE id=?1", [id], |r| r.get(0))
+        .unwrap_or(None);
     conn.execute("DELETE FROM captures WHERE id=?1", [id])?;
+    Ok(file)
+}
+
+pub fn set_capture_file(conn: &Connection, id: &str, path: &str) -> Result<()> {
+    conn.execute("UPDATE captures SET file_path=?2 WHERE id=?1", params![id, path])?;
     Ok(())
+}
+
+/// Number for the next automatic `spectra_NNN` name in a workspace: one past
+/// the highest already there, so names never repeat while those captures exist.
+pub fn next_spectrum_number(conn: &Connection, session_id: &str) -> Result<u32> {
+    let mut stmt = conn.prepare("SELECT label FROM captures WHERE session_id=?1 AND label LIKE 'spectra\\_%' ESCAPE '\\'")?;
+    let labels = stmt.query_map([session_id], |r| r.get::<_, Option<String>>(0))?;
+    let max = labels.flatten().flatten()
+        .filter_map(|l| l.strip_prefix("spectra_")?.parse::<u32>().ok())
+        .max().unwrap_or(0);
+    Ok(max + 1)
 }
 
 pub fn count_captures(conn: &Connection, session_id: &str) -> Result<i64> {

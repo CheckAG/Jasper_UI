@@ -1,0 +1,43 @@
+/* Single-screen layout (Phase F3): menu bar · toolbar · controls | plot | captures · status bar */
+.toolbox {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  background: var(--bg);
+  color: var(--ink);
+}
+.toolbox-body {
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr) 300px;
+  gap: var(--gap);
+  padding: var(--gap) 16px;
+  min-height: 0;
+}
+.toolbox-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.toolbox-center { overflow: hidden; }
+.toolbox-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  padding: 14px;
+}
+
+/* Narrower windows: captures drop under the plot, then everything stacks. */
+@media (max-width: 1180px) {
+  .toolbox-body { grid-template-columns: 272px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .toolbox-right { grid-column: 1 / -1; max-height: 260px; }
+}
+@media (max-width: 760px) {
+  .toolbox { height: auto; min-height: 100%; }
+  #root:has(.toolbox) { overflow-y: auto; }
+  .toolbox-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .toolbox-center { order: -1; min-height: 340px; }
+  .toolbox-right { max-height: none; }
+}

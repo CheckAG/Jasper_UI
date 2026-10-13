@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import type { AcqParams } from '../lib/types';
+import { useUIStore } from '../store/uiStore';
 
 interface Series {
   ys:      Float32Array;
@@ -20,6 +21,7 @@ export function StaticChart({ xs, series, height = 260 }: StaticChartProps) {
   const wrapRef   = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [width, setWidth] = useState(0);
+  const theme = useUIStore(s => s.theme);
 
   // Measure the wrapper (never the canvas) — decouples sizing from data redraws,
   // which prevents the canvas-feeds-its-own-width shrink loop.
@@ -58,8 +60,10 @@ export function StaticChart({ xs, series, height = 260 }: StaticChartProps) {
     ctx.clearRect(0, 0, W, H);
 
     // Grid
-    ctx.strokeStyle = 'rgba(15,17,21,0.06)'; ctx.lineWidth = 1;
-    ctx.font = '10px "Geist Mono", monospace'; ctx.fillStyle = '#7a808a';
+    const css = getComputedStyle(document.documentElement);
+    ctx.strokeStyle = `rgba(${css.getPropertyValue('--ink-rgb').trim() || '15,17,21'},0.06)`; ctx.lineWidth = 1;
+    ctx.font = '10px "Geist Mono", monospace';
+    ctx.fillStyle = css.getPropertyValue('--muted').trim() || '#7a808a';
     // Ticks derive from the data's x range (mock NIR and real device differ)
     const rawStep = (xMax - xMin) / 5;
     const mag = Math.pow(10, Math.floor(Math.log10(Math.max(rawStep, 1e-12))));
@@ -90,7 +94,7 @@ export function StaticChart({ xs, series, height = 260 }: StaticChartProps) {
       ctx.stroke();
     });
     ctx.setLineDash([]);
-  }, [xs, series, height, width]);
+  }, [xs, series, height, width, theme]);
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height }}>

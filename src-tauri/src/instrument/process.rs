@@ -15,6 +15,12 @@ pub struct CalFrame {
     /// Integration the frame was taken at; a dark frame only cancels the
     /// offset of scans with matching integration.
     pub integration_ms: u32,
+    /// Averages behind the frame.
+    pub averages: u32,
+    /// Integration that was asked for. The device may apply a slightly
+    /// different value, so the stale-dark check compares this with the
+    /// setting rather than `integration_ms`.
+    pub requested_ms: u32,
 }
 
 #[derive(Default)]
@@ -53,6 +59,8 @@ pub fn average_scans_with(
                 if f.ys.len() != a.ys.len() {
                     return Err("pixel count changed mid-calibration".into());
                 }
+                // Saturation in any one scan is saturation; averaging must not hide it.
+                a.peak = a.peak.max(f.peak);
                 for (s, v) in a.ys.iter_mut().zip(&f.ys) {
                     *s += v;
                 }
@@ -118,13 +126,14 @@ mod tests {
             units: units.into(),
             integration_ms: 25,
             timestamp: 0,
+            peak: 0.0,
         }
     }
 
     fn cal(dark: Option<Vec<f32>>, reference: Option<Vec<f32>>) -> Calibration {
         Calibration {
-            dark:      dark.map(|ys| CalFrame { ys, integration_ms: 120 }),
-            reference: reference.map(|ys| CalFrame { ys, integration_ms: 120 }),
+            dark:      dark.map(|ys| CalFrame { ys, integration_ms: 120, averages: 1, requested_ms: 120 }),
+            reference: reference.map(|ys| CalFrame { ys, integration_ms: 120, averages: 1, requested_ms: 120 }),
         }
     }
 

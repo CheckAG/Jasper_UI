@@ -1,6 +1,8 @@
 /* ============================================================
-   JASPER Design Tokens — Light theme only
+   JASPER Design Tokens — light (default) and dark
    Source: CheckAg Product Design · UX Strategy V0.4
+   The theme is the user's choice (uiStore.theme → <html data-theme>),
+   never the OS setting. Components colour through these tokens only.
    ============================================================ */
 
 :root {
@@ -15,6 +17,7 @@
   --paper:   #fffdf8;
   --ink:     #241f19;
   --ink-rgb: 36,31,25;
+  --paper-rgb: 255,253,248;
   --ink-2:   #4a4239;
   --muted:   #8c8174;
   --line:    #e8ddcd;
@@ -22,6 +25,7 @@
   --tint:    #efe7d9;
   --tint-2:  #e7ddcc;
   /* ===== end theme ===== */
+  color-scheme: light;
 
   /* --- Typography --- */
   --font-sans:  "Geist", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
@@ -37,6 +41,28 @@
   --radius-sm:  7px;
   --radius-md:  10px;
   --radius-lg:  14px;
+}
+
+/* ===== Dark theme: same hues, night bench ===== */
+:root[data-theme="dark"] {
+  --signal:       #8f96f2;
+  --signal-soft:  #262947;
+  --accent-ok:    #5cbf8d;
+  --accent-warn:  #e7a14a;
+  --accent-alarm: #ec7664;
+  --accent-violet:#a68cf0;
+  --bg:      #13141a;
+  --paper:   #1a1c24;
+  --ink:     #ebe7df;
+  --ink-rgb: 235,231,223;
+  --paper-rgb: 26,28,36;
+  --ink-2:   #c4bfb6;
+  --muted:   #8d8a95;
+  --line:    #2b2e3a;
+  --line-2:  #383c4b;
+  --tint:    #22252f;
+  --tint-2:  #2a2d39;
+  color-scheme: dark;
 }
 
 /* --- Density overrides --- */
@@ -77,6 +103,12 @@
   --status-ok:    #1f9d55;
   --status-drift: #d97706;
   --status-fault: #c0322d;
+}
+:root[data-theme="dark"] {
+  --status-live:  #6f9bff;
+  --status-ok:    #5cbf8d;
+  --status-drift: #e7a14a;
+  --status-fault: #ec7664;
 }
 
 /* --- Global reset (tokens.css owns the body style) --- */

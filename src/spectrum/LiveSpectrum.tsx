@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import type { AcqParams, Capture, CursorState, Spectrum } from '../lib/types';
+import { useUIStore } from '../store/uiStore';
 
 // ── Unit conversion helpers ───────────────────────────────────────────────────
 
@@ -65,7 +66,6 @@ interface View { xMin: number; xMax: number; yMin: number; yMax: number }
 interface LiveSpectrumProps {
   params:        AcqParams;
   captures:      Capture[];
-  theme:         'light';
   liveSpectrum?: Spectrum | null; // from acqStore (real stream); null → local fallback
   onCursor?:     (c: CursorState | null) => void;
   paused:        boolean;
@@ -77,6 +77,8 @@ export function LiveSpectrum({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 400 });
+  // The draw loop reads colour tokens once per mount; remount it on a theme switch.
+  const theme = useUIStore(s => s.theme);
 
   // Latest-value refs — the imperative rAF loop reads these so it never needs
   // to be torn down and rebuilt when props change (only on resize).
@@ -169,7 +171,7 @@ export function LiveSpectrum({
         ctx.textAlign = 'center';
         ctx.fillText(paused
           ? 'Live is off — select captures to view them.'
-          : 'No signal — connect an instrument in the Instrument workspace.',
+          : 'No signal — connect an instrument (Device ▸ Instruments).',
           size.w / 2, size.h / 2);
         ctx.textAlign = 'start';
         raf = requestAnimationFrame(drawFrame);
@@ -344,7 +346,7 @@ export function LiveSpectrum({
     fit();
     drawFrame();
     return () => cancelAnimationFrame(raf);
-  }, [size.w, size.h]);
+  }, [size.w, size.h, theme]);
 
   /** Zoom around the centre of the current view. f < 1 zooms in. */
   function zoomBy(f: number) {

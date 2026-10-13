@@ -54,6 +54,8 @@ export interface FrameDTO {
   /** Integration that actually produced the frame, after the device's clamp. */
   integration_ms: number;
   timestamp: number;
+  /** Brightest raw pixel as a fraction of full scale; 1 = a pixel hit the ADC limit. */
+  peak?: number;
 }
 
 export interface CalResultDTO {

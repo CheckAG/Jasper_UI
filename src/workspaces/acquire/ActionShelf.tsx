@@ -1,28 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
 import { useAcqStore }   from '../../store/acqStore';
-import { ipc }           from '../../lib/ipc';
-import { LAMP_CONTROLS_ENABLED } from '../../lib/features';
 import { useSessionStore}from '../../store/sessionStore';
-import { Toggle }        from '../../components/design/Toggle';
 
 export function ActionShelf() {
-  const { params, setParam } = useAcqStore();
+  const params = useAcqStore(s => s.params);
   const captures = useSessionStore(s => s.captures);
-  const tagRef = useRef('');
+  const sampleTag = useAcqStore(s => s.sampleTag);
+  const setSampleTag = useAcqStore(s => s.setSampleTag);
+  const captureName = useAcqStore(s => s.captureName);
+  const setCaptureName = useAcqStore(s => s.setCaptureName);
 
-  // Integration bounds come from the device, not from a guess. The old 5-500 ms
-  // range let the slider ask for values this hardware rejects (its floor is the
-  // 7.4 ms it takes to clock 3694 pixels out), so the control moved and the
-  // device quietly did something else.
-  const [range, setRange] = useState({ min: 8, max: 10_000 });
-  useEffect(() => {
-    ipc.getDeviceMetadata()
-      .then(m => { if (m) setRange({ min: m.integMinMs, max: m.integMaxMs }); })
-      .catch(() => {});
-  }, []);
+  const deviceMeta = useAcqStore(s => s.deviceMeta);
+  const writeSetting = useAcqStore(s => s.writeSetting);
+  // Integration bounds come from the device, not from a guess: its floor is the
+  // 7.4 ms it takes to clock 3694 pixels out. The backend enforces them too.
+  const range = deviceMeta ? { min: deviceMeta.integMinMs, max: deviceMeta.integMaxMs } : { min: 8, max: 10_000 };
 
   const paused = useAcqStore(s => s.paused);
-  const deviceMeta = useAcqStore(s => s.deviceMeta);
 
   const progress = useAcqStore(s => s.captureProgress);
   const runCapture = useAcqStore(s => s.runCapture);
@@ -59,7 +52,7 @@ export function ActionShelf() {
             onBlur={e => {
               const v = Math.round(Number(e.target.value));
               const clamped = Number.isFinite(v) ? Math.min(Math.max(v, range.min), range.max) : params.integration;
-              if (clamped !== params.integration) setParam('integration', clamped);
+              if (clamped !== params.integration) writeSetting('integration', clamped);
               else e.target.value = String(params.integration);
             }}
             onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
@@ -75,39 +68,32 @@ export function ActionShelf() {
       <div style={{ ...fieldStyle, flex: '0 1 130px' }}>
         <label className="mono" style={labelStyle}>Averaging</label>
         <div style={{ ...rowStyle, gap: 6 }}>
-          <button onClick={() => setParam('averaging', Math.max(1, params.averaging - 1))}
+          <button onClick={() => writeSetting('averaging', Math.max(1, params.averaging - 1))}
             style={{ width: 28, height: 28, flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
               background: 'var(--paper)', cursor: 'pointer', fontSize: 16 }}>−</button>
           <span className="mono" style={{ flex: 1, textAlign: 'center', fontSize: 14 }}>{params.averaging}</span>
-          <button onClick={() => setParam('averaging', Math.min(64, params.averaging + 1))}
+          <button onClick={() => writeSetting('averaging', Math.min(64, params.averaging + 1))}
             style={{ width: 28, height: 28, flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
               background: 'var(--paper)', cursor: 'pointer', fontSize: 16 }}>+</button>
         </div>
       </div>
 
-      {/* Light source — no driver reads lightOn/lightPower and this hardware
-          has no lamp command, so the controls are hidden rather than lying. */}
-      {LAMP_CONTROLS_ENABLED && (
-        <div style={{ ...fieldStyle, flex: '1 1 200px' }}>
-          <label className="mono" style={labelStyle}>Light Source</label>
-          <div style={rowStyle}>
-            <Toggle on={params.lightOn} onChange={v => setParam('lightOn', v)} label={params.lightOn ? 'ON' : 'OFF'} />
-            <input type="range" min={0} max={100} value={params.lightPower}
-              disabled={!params.lightOn}
-              onChange={e => setParam('lightPower', Number(e.target.value))}
-              style={{ flex: 1, minWidth: 0, accentColor: 'var(--signal)', opacity: params.lightOn ? 1 : 0.4 }} />
-            <span className="mono" style={{ fontSize: 13, minWidth: 40, textAlign: 'right', flexShrink: 0 }}>
-              {params.lightPower}<small style={{ color: 'var(--muted)', marginLeft: 2, fontSize: 11 }}>%</small>
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Capture name */}
+      <div style={fieldStyle}>
+        <label className="mono" style={labelStyle}>Name</label>
+        <input type="text" placeholder="spectra_### (automatic)"
+          value={captureName} onChange={e => setCaptureName(e.target.value)}
+          title="Name for the next capture and its .jdx file. Leave empty for spectra_001, spectra_002, …"
+          style={{ height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)',
+            borderRadius: 8, background: 'var(--paper)', color: 'var(--ink)',
+            fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none', minWidth: 0 }} />
+      </div>
 
       {/* Sample tag */}
       <div style={fieldStyle}>
         <label className="mono" style={labelStyle}>Sample Tag</label>
         <input type="text" placeholder="e.g. leaf · stress"
-          onChange={e => { tagRef.current = e.target.value; }}
+          value={sampleTag} onChange={e => setSampleTag(e.target.value)}
           style={{ height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)',
             borderRadius: 8, background: 'var(--paper)', color: 'var(--ink)',
             fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none', minWidth: 0 }} />
@@ -115,7 +101,7 @@ export function ActionShelf() {
 
       {/* Capture CTA */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 180px', minWidth: 0 }}>
-        <button onClick={() => runCapture(tagRef.current)}
+        <button onClick={() => runCapture()}
           disabled={busyCapture || !paused || !deviceMeta}
           title={busyCapture
             ? `Capturing scan ${progress?.done ?? 0} of ${progress?.total ?? 0}`
@@ -136,7 +122,7 @@ export function ActionShelf() {
           {busyCapture && (
             <span aria-hidden style={{
               position: 'absolute', inset: 0, transformOrigin: 'left',
-              transform: `scaleX(${pct})`, background: 'rgba(255,255,255,0.18)',
+              transform: `scaleX(${pct})`, background: 'rgba(var(--paper-rgb),0.18)',
               transition: 'transform 120ms linear', pointerEvents: 'none',
             }} />
           )}
@@ -148,7 +134,7 @@ export function ActionShelf() {
               flexShrink: 0 }} />
             {busyCapture ? `Capturing ${progress?.done ?? 0}/${progress?.total ?? 0}` : 'Capture'}
             <span className="mono" style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 6px',
-              borderRadius: 4, background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)' }}>
+              borderRadius: 4, background: 'rgba(var(--paper-rgb),0.12)', color: 'rgba(var(--paper-rgb),0.8)' }}>
               Space
             </span>
           </span>

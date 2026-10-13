@@ -1,6 +1,5 @@
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{Mutex, atomic::{AtomicBool, AtomicU64, Ordering}};
 use std::sync::Arc;
-use crate::instrument::tcd1304::Tcd1304Driver;
 use crate::instrument::driver::SpectrumDriver;
 use crate::commands::sidecar::SidecarHolder;
 
@@ -9,6 +8,8 @@ pub struct AppState {
     /// scan() through the trait (mock and real device alike).
     pub driver:          Arc<Mutex<Box<dyn SpectrumDriver + Send>>>,
     pub db_path:         String,
+    /// Root of the per-workspace spectra folders (storage::files).
+    pub spectra_root:    std::path::PathBuf,
     /// Monotonic acquisition generation. Each start bumps it; a streaming thread
     /// runs only while its captured generation still matches — so a restart
     /// (e.g. on mode change) cleanly retires the previous thread.
@@ -30,16 +31,29 @@ pub struct AppState {
     /// (instrument::process). Arc: the streaming thread reads it per frame.
     pub calibration:     Arc<Mutex<crate::instrument::process::Calibration>>,
     pub sidecar:         SidecarHolder,
+    /// Acquisition settings. The backend owns them: the GUI, scripts and agents
+    /// all read and write them through the Device API (crate::api).
+    pub settings:        Mutex<crate::api::Settings>,
+    /// True while the live stream runs. Cleared by stop_acquisition and by a
+    /// stream that stops on a device error.
+    pub live:            Arc<AtomicBool>,
+    /// Device API audit log, one JSON object per line.
+    pub audit_path:      std::path::PathBuf,
+    /// Socket clients that asked for events (`subscribe`). Arc: the server holds it too.
+    pub subscribers:     Arc<crate::api::server::Hub>,
+    /// Privileged requests from outside the app waiting for a person.
+    pub confirmations:   crate::api::Confirmations,
 }
 
 impl AppState {
-    pub fn new(data_dir: &std::path::Path) -> Self {
+    pub fn new(data_dir: &std::path::Path, spectra_root: std::path::PathBuf) -> Self {
         let db_path = data_dir.join("jasper.db").to_string_lossy().to_string();
         // Worth logging: launched from a snap-confined terminal (VS Code),
         // XDG_DATA_HOME points inside the snap, so the app uses a different
         // database than it does from a plain shell. Sessions "disappearing"
         // between launches is this, not data loss.
         eprintln!("[AppState] database: {db_path}");
+        eprintln!("[AppState] spectra:  {}", spectra_root.display());
 
         if let Ok(conn) = crate::storage::db::open(&db_path) {
             drop(conn);
@@ -67,34 +81,40 @@ impl AppState {
         // already exactly that: it lists nothing, reports not connected, and
         // refuses every operation — so there is no separate "no device" type,
         // and nothing synthesises a spectrum to fill the gap.
-        let mut driver = Tcd1304Driver::new(String::new());
+        let mut driver = crate::instrument::disconnected();
         if let Ok(port) = std::env::var("JASPER_PORT") {
             let port = port.trim().to_string();
             if !port.is_empty() {
-                match driver.connect(&port) {
-                    Ok(()) => eprintln!("[AppState] TCD1304 connected on {port}"),
+                match crate::instrument::connect(&port) {
+                    Ok(d) => { driver = d; eprintln!("[AppState] instrument connected on {port}") }
                     // Not fatal: the workspace can connect once the device is
                     // there, and refusing to launch over a missing cable is worse.
                     Err(e) => eprintln!("[AppState] JASPER_PORT={port} did not connect: {e}"),
                 }
             }
         }
-        let driver: Box<dyn SpectrumDriver + Send> = Box::new(driver);
 
         Self {
             driver:         Arc::new(Mutex::new(driver)),
             db_path,
+            spectra_root,
             acq_generation: Arc::new(AtomicU64::new(0)),
             frame_in_flight: Arc::new(AtomicU64::new(0)),
             last_raw: Arc::new(Mutex::new(None)),
             calibration:    Arc::new(Mutex::new(Default::default())),
             sidecar:        SidecarHolder::new(script_path),
+            settings:       Mutex::new(Default::default()),
+            live:           Arc::new(AtomicBool::new(false)),
+            audit_path:     data_dir.join("api-audit.jsonl"),
+            subscribers:    Default::default(),
+            confirmations:  Default::default(),
         }
     }
 
     /// Retire any running acquisition thread by advancing the generation.
     pub fn stop_acquisition(&self) {
         self.acq_generation.fetch_add(1, Ordering::SeqCst);
+        self.live.store(false, Ordering::SeqCst);
         // Clear the backpressure gate: whatever frame was awaiting a render
         // belongs to a stream that no longer exists, and leaving the gate set
         // would make the next stream wait out its stale timeout for nothing.

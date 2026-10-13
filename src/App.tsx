@@ -3,30 +3,20 @@ import { useAcqStore }     from './store/acqStore';
 import { useSessionStore } from './store/sessionStore';
 import { useUIStore }      from './store/uiStore';
 import { ipc }             from './lib/ipc';
-import { isWorkspaceEnabled, DEFAULT_WORKSPACE } from './lib/features';
-import { AcquireWorkspace }      from './workspaces/acquire/AcquireWorkspace';
-import { InstrumentWorkspace }   from './workspaces/instrument/InstrumentWorkspace';
-import { AnalyzeWorkspace }      from './workspaces/analyze/AnalyzeWorkspace';
-import { ChemometricsWorkspace } from './workspaces/chemometrics/ChemometricsWorkspace';
+import { ToolboxScreen }         from './components/layout/ToolboxScreen';
+import { DeviceDialogs }         from './components/overlays/InstrumentDialogs';
 import { CommandPalette }        from './components/overlays/CommandPalette';
 import { ExportDialog }          from './components/overlays/ExportDialog';
 import { NewSessionDialog }      from './components/overlays/NewSessionDialog';
 import { Toaster }               from './components/overlays/Toaster';
+import { ConfirmRequests }       from './components/overlays/ConfirmRequests';
 
 export default function App() {
-  const { params, paused, setParam, setPaused, setLiveSpectrum } = useAcqStore();
-  // Whether a device is connected, from the backend — the stream cannot start
-  // before one is. Serial rather than the object: the poller hands back a new
-  // object every 2 s, and depending on that would restart the stream on a timer.
-  const deviceSerial = useAcqStore(s => s.deviceMeta?.serial ?? null);
-  const { addCapture, init: initSessions } = useSessionStore();
-  const { density, activeWs, cmdOpen, exportOpen, newSessionOpen, setCmdOpen, setWorkspace } = useUIStore();
-
-  // A workspace that has since been switched off must not stay selected —
-  // otherwise it renders with no way in the rail to leave it.
-  useEffect(() => {
-    if (!isWorkspaceEnabled(activeWs)) setWorkspace(DEFAULT_WORKSPACE);
-  }, [activeWs, setWorkspace]);
+  // Live, integration and averaging live in the backend (Device API); the
+  // store mirrors them, polled below. Nothing here starts or restarts a stream.
+  const { paused, setPaused, setLiveSpectrum } = useAcqStore();
+  const { init: initSessions } = useSessionStore();
+  const { density, cmdOpen, exportOpen, newSessionOpen, setCmdOpen } = useUIStore();
 
   // One-time init: density, session hydration, live-frame subscription
   useEffect(() => {
@@ -47,39 +37,22 @@ export default function App() {
       // reaches the canvas. Until this lands the backend holds off capturing,
       // so a slow render costs frame rate instead of accumulating a backlog.
       requestAnimationFrame(() => { ipc.frameConsumed().catch(() => {}); });
-
-      // The device clamps integration to its own range and reports what it
-      // applied. Snap the control to the truth rather than leaving it showing a
-      // value the hardware refused. Converges in one step: the next frame comes
-      // back with the value we now hold.
-      const applied = frame.params.integration;
-      const { params: current, setParam: set } = useAcqStore.getState();
-      if (applied > 0 && applied !== current.integration) set('integration', applied);
+    });
+    // A capture by any caller lands in the Captures panel. The GUI's own capture
+    // also arrives through runCapture; the store ignores the second copy.
+    const unlistenSaved = ipc.onCaptureSaved((sessionId, id) => {
+      const s = useSessionStore.getState();
+      if (sessionId === s.activeId && s.captures.some(c => c.id === id)) return;
+      s.syncCaptures(sessionId).catch(() => {});
     });
     return () => {
       clearInterval(instrumentPoll);
       unlisten();
+      unlistenSaved();
       ipc.stopAcquisition().catch(() => {});
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Start and stop the stream with Live, and restart it whenever acquisition
-  // params change so the trace matches the settings. Pausing stops the device
-  // capturing rather than just hiding the result — the instrument has nothing
-  // to do while the plot is frozen.
-  //
-  // Connecting a device is also a start condition. This used to depend on
-  // `paused` alone: at launch it ran once with nothing connected, the start
-  // threw and was swallowed, and connecting afterwards never re-ran it — Live
-  // read as on while no frame was ever emitted.
-  useEffect(() => {
-    if (paused || !deviceSerial) {
-      ipc.stopAcquisition().catch(() => {});
-    } else {
-      ipc.startAcquisition(params).catch(() => {/* no instrument: canvas stays empty */});
-    }
-  }, [paused, deviceSerial, params.mode, params.integration, params.averaging]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -92,24 +65,26 @@ export default function App() {
         // a capture that skipped averaging and progress entirely.
         useAcqStore.getState().runCapture();
       }
-      if (e.key === 'p')       setPaused(!paused);
+      if (e.key === 'l')       setPaused(!paused);
+      if (e.key === 'd')       useAcqStore.getState().toggleCal('dark');
+      if (e.key === 'r')       useAcqStore.getState().toggleCal('reference');
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdOpen(true); }
       if (e.key === 'Escape')  setCmdOpen(false);
     }
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [paused, addCapture, setParam, setPaused, setCmdOpen]);
+  }, [paused, setPaused, setCmdOpen]);
 
   return (
     <>
-      {activeWs === 'acquire'      && <AcquireWorkspace />}
-      {activeWs === 'instrument'   && <InstrumentWorkspace />}
-      {activeWs === 'analyze'      && <AnalyzeWorkspace />}
-      {activeWs === 'chemometrics' && <ChemometricsWorkspace />}
+      {/* One screen. Analyze and Chemometrics are not rendered (features.ts). */}
+      <ToolboxScreen />
+      <DeviceDialogs />
 
       {cmdOpen        && <CommandPalette />}
       {exportOpen     && <ExportDialog />}
       {newSessionOpen && <NewSessionDialog />}
+      <ConfirmRequests />
       <Toaster />
     </>
   );

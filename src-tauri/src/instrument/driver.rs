@@ -8,8 +8,6 @@ pub struct AcqParams {
     pub acq_mode:    String,
     pub integration: u32,     // ms
     pub averaging:   u32,
-    pub light_on:    bool,
-    pub light_power: f32,
     pub x_unit:      String,
     pub y_unit:      String,
     pub lock_axes:   bool,
@@ -23,8 +21,6 @@ impl Default for AcqParams {
             acq_mode:    "continuous".into(),
             integration: 120,
             averaging:   4,
-            light_on:    true,
-            light_power: 80.0,
             x_unit:      "nm".into(),
             y_unit:      "au".into(),
             lock_axes:   false,
@@ -53,6 +49,11 @@ pub struct SpectrumFrame {
     /// range, so these differ whenever the request was out of bounds.
     pub integration_ms: u32,
     pub timestamp: u64,
+    /// Brightest pixel as a fraction of the device's full scale, measured on
+    /// the raw frame before any dark/reference maths; 1.0 when a pixel hit the
+    /// ADC limit. Drives the saturation warning.
+    #[serde(default)]
+    pub peak: f32,
 }
 
 /// One instrument the host can see. Produced by probing a port, so every field
@@ -132,6 +133,9 @@ pub trait SpectrumDriver: Send {
     fn device_list(&self) -> Vec<DeviceInfo>;
     fn connect(&mut self, device_id: &str) -> Result<(), String>;
     fn disconnect(&mut self);
+    /// One frame, oriented so more light reads higher (flip inverted video
+    /// here, in the driver), `units` "counts", and `peak` filled in against
+    /// the sensor's own full scale. Everything downstream relies on that.
     fn scan(&self, params: &AcqParams) -> Result<SpectrumFrame, String>;
     fn calibrate_dark(&self, params: &AcqParams) -> Result<CalResult, String>;
     fn calibrate_reference(&self, params: &AcqParams) -> Result<CalResult, String>;

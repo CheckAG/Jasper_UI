@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useUIStore }       from '../../store/uiStore';
-import { WORKSPACES }    from '../../lib/features';
+import { buildMenus }       from '../layout/menus';
 import { useSessionStore }  from '../../store/sessionStore';
 
 interface CmdItem {
@@ -12,24 +12,21 @@ interface CmdItem {
 
 export function CommandPalette() {
   const [query, setQuery] = useState('');
-  const { setCmdOpen, setWorkspace, setExportOpen, setNewSessionOpen } = useUIStore();
+  const { setCmdOpen } = useUIStore();
   const { sessions, setActiveSession } = useSessionStore();
 
   function close() { setCmdOpen(false); setQuery(''); }
 
   const allItems: CmdItem[] = [
-    ...WORKSPACES.map(ws => ({
-      group: 'Workspace', label: ws.label, meta: '↵',
-      action: () => { setWorkspace(ws.id); close(); },
-    })),
     ...sessions.slice(0, 5).map(s => ({
-      group: 'Session', label: s.name, meta: `${s.captureCount} captures`,
+      group: 'Workspace', label: s.name, meta: `${s.captureCount} spectra`,
       action: () => { setActiveSession(s.id); close(); },
     })),
-    { group: 'Action', label: 'New session', meta: '',
-      action: () => { setNewSessionOpen(true); close(); } },
-    { group: 'Action', label: 'Export data', meta: '',
-      action: () => { setExportOpen(true); close(); } },
+    // The menu bar's commands, enabled ones only.
+    ...buildMenus().flatMap(m => m.items.flatMap(it => it === '-' || !it.action ? [] : [{
+      group: m.name, label: it.label, meta: it.shortcut ?? '',
+      action: () => { close(); it.action!(); },
+    }])),
   ];
 
   const filtered = query.trim()
@@ -52,7 +49,7 @@ export function CommandPalette() {
           autoFocus
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search workspaces, sessions, actions…"
+          placeholder="Search workspaces and commands…"
           style={{ padding: '14px 18px', border: 0, outline: 0,
             background: 'transparent', color: 'var(--ink)',
             fontFamily: 'var(--font-sans)', fontSize: 18,

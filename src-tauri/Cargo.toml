@@ -29,6 +29,7 @@ rusqlite    = { version = "0.31", features = ["bundled"] }
 # default-features off: we open ports by path only (no libudev enumeration)
 serialport  = { version = "4", default-features = false }
 rust_xlsxwriter = "0.92.0"
+chrono      = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 tempfile = "3"
