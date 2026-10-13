@@ -109,8 +109,10 @@ hands each line to `dispatch`; a client names itself `script`/`cli`/`agent` (nev
 `python -m jasper` as the CLI. Read-only MCP server `python -m jasper.mcp` (stdio, stdlib only): tool
 `jasper_read`, resource `jasper://reference` (`clients/python/jasper/reference.yaml`, the API doc's layout with
 this board's values: 3694 pixels, full scale 32 767, averages ≤ 64, no light source, pixel x-axis). Self-check:
-`python3 clients/python/test_mcp.py`. Not yet: live-spectrum streaming to clients (`subscribe`), the
-confirmation flow, Stage-2 MCP tools (`jasper_capture` etc.).
+`python3 clients/python/test_mcp.py`. **Added 2026-10-13, verified on the board:** `subscribe` (events as JSON-RPC notifications; a slow client
+drops frames), `python -m jasper watch`; the confirmation flow — privileged commands (`update_firmware`, now in the
+API) from outside the app wait up to 120 s for Approve/Decline in a GUI dialog, `confirm` is GUI-only. Not yet:
+Stage-2 MCP tools (`jasper_capture` etc.), calibration writes as privileged commands (no backend, #7).
 - WebSocket listener on `127.0.0.1:8765`, localhost only (new dep: `tokio-tungstenite`). Spectra as binary frames.
 - `clients/python/jasper`: thin client (`read`, `write`, `invoke`). CLI on top of it.
 - Read-only MCP server exposing `jasper_read` + the reference file.
