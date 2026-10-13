@@ -14,6 +14,8 @@ interface AcqStore {
    *  Held here rather than fetched per component, so the top bar, the Instrument
    *  panel and the Acquire strip cannot disagree about what is connected. */
   deviceMeta: DeviceMetadata | null;
+  /** The connected board went away (cable pulled); the backend is looking for it. */
+  reconnecting: boolean;
   /** Which calibration frames the backend actually holds. */
   calHeld: { dark: boolean; reference: boolean };
   /** The held dark was taken at other integration/averaging than now. */
@@ -68,6 +70,7 @@ export const useAcqStore = create<AcqStore>()(
     paused: true,
     liveSpectrum: null,
     deviceMeta:   null,
+    reconnecting: false,
     calHeld:      { dark: false, reference: false },
     darkStale:    false,
     fps:          0,
@@ -179,7 +182,11 @@ export const useAcqStore = create<AcqStore>()(
     refreshInstrument: async () => {
       let st;
       try { st = await ipc.readInstrument(); } catch { return; }
+      const was = get().reconnecting;
+      if (st.reconnecting && !was) useUIStore.getState().pushToast('Instrument lost. Reconnect the cable; JASPER will pick it up again.', 'error');
+      if (!st.reconnecting && was && st.meta) useUIStore.getState().pushToast('Instrument reconnected.', 'success');
       set((s) => {
+        s.reconnecting = st.reconnecting;
         // A new (or lost) device: the last frame belongs to the old one, so it
         // goes; otherwise Dark/Reference stay enabled against a spectrum that is gone.
         if (st.meta?.serial !== s.deviceMeta?.serial) s.liveSpectrum = null;

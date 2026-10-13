@@ -4,7 +4,7 @@ import { useUIStore }      from '../../store/uiStore';
 import { LED }             from '../design/LED';
 
 export function TopBar() {
-  const { params, deviceMeta, calHeld } = useAcqStore();
+  const { params, deviceMeta, calHeld, reconnecting } = useAcqStore();
   const { captures, activeSession } = useSessionStore();
   const { setCmdOpen, theme, setTheme } = useUIStore();
   const next = theme === 'dark' ? 'light' : 'dark';
@@ -48,8 +48,10 @@ export function TopBar() {
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8,
         padding: '4px 10px', border: '1px solid var(--line)', borderRadius: 10,
         background: 'var(--paper)', fontSize: 12 }}>
-        <LED status={deviceMeta ? 'ok' : 'pending'} size={7} />
-        {deviceMeta ? (
+        <LED status={deviceMeta ? 'ok' : reconnecting ? 'fault' : 'pending'} size={7} />
+        {reconnecting ? (
+          <span>Reconnecting… plug the instrument back in</span>
+        ) : deviceMeta ? (
           <>
             <span className="mono">
               {deviceMeta.model}

@@ -43,6 +43,9 @@ pub struct AppState {
     pub subscribers:     Arc<crate::api::server::Hub>,
     /// Privileged requests from outside the app waiting for a person.
     pub confirmations:   crate::api::Confirmations,
+    /// The board to keep connected: set by connect, cleared by disconnect.
+    /// `api::watch_tick` uses it to find the board again after an unplug.
+    pub wanted:          Mutex<Option<crate::api::Wanted>>,
 }
 
 impl AppState {
@@ -94,6 +97,7 @@ impl AppState {
             }
         }
 
+        let wanted = driver.device_metadata().map(|m| crate::api::Wanted { serial: m.serial, ..Default::default() });
         Self {
             driver:         Arc::new(Mutex::new(driver)),
             db_path,
@@ -108,6 +112,7 @@ impl AppState {
             audit_path:     data_dir.join("api-audit.jsonl"),
             subscribers:    Default::default(),
             confirmations:  Default::default(),
+            wanted:         Mutex::new(wanted),
         }
     }
 

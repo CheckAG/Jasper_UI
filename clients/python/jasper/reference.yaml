@@ -24,7 +24,7 @@ device:
 
 variables:   # read with jasper_read; this server cannot write
   - name: device.state
-    description: disconnected, idle or acquiring
+    description: disconnected, idle, acquiring, or reconnecting (the cable was pulled; the app is waiting for the same unit to come back, then resumes Live if it was on)
   - name: device.info
     description: Model, serial, firmware, pixel count and integration limits, as the device reports them
   - name: device.diagnostics

@@ -97,11 +97,11 @@ export const deviceApi = {
     callApi<T>({ method: 'invoke', params: { command, args } }),
 };
 
-const INSTRUMENT_VARS = ['device.info', 'reference.dark', 'reference.dark_stale', 'reference.white', 'acquisition.live',
+const INSTRUMENT_VARS = ['device.info', 'device.state', 'reference.dark', 'reference.dark_stale', 'reference.white', 'acquisition.live',
   'acquisition.integration_time_ms', 'acquisition.averages', 'processing.mode'];
 
 export interface InstrumentState {
-  meta: DeviceMetadata | null; dark: boolean; darkStale: boolean; reference: boolean; live: boolean;
+  meta: DeviceMetadata | null; reconnecting: boolean; dark: boolean; darkStale: boolean; reference: boolean; live: boolean;
   integration: number; averaging: number; mode: AcqParams['mode'];
 }
 
@@ -185,6 +185,7 @@ export const ipc = {
   readInstrument: (): Promise<InstrumentState> => IS_TAURI
     ? deviceApi.read<Record<string, unknown>>(INSTRUMENT_VARS).then(v => ({
         meta: metaFromDTO(v['device.info'] as DeviceMetadataDTO | null),
+        reconnecting: v['device.state'] === 'reconnecting',
         dark: v['reference.dark'] as boolean,
         darkStale: v['reference.dark_stale'] as boolean,
         reference: v['reference.white'] as boolean,
@@ -193,7 +194,7 @@ export const ipc = {
         averaging: v['acquisition.averages'] as number,
         mode: v['processing.mode'] as AcqParams['mode'],
       }))
-    : Promise.resolve({ meta: null, dark: false, darkStale: false, reference: false, live: false,
+    : Promise.resolve({ meta: null, reconnecting: false, dark: false, darkStale: false, reference: false, live: false,
         integration: 120, averaging: 4, mode: 'intensity' }),
 
   /** Set an acquisition setting; resolves with the value the backend applied

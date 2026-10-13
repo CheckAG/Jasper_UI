@@ -152,6 +152,7 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
   onRescan: () => void;
 }) {
   const [manual, setManual] = useState('');
+  const reconnecting = useAcqStore(s => s.reconnecting);
   const connected = devices.find(d => d.id === connectedId) ?? null;
   const others = devices.filter(d => d.id !== connectedId);
   return (
@@ -160,6 +161,17 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
         <span style={{ fontSize: 12, color: 'var(--muted)' }}>Every serial port is probed with *IDN?.</span>
         <Button onClick={onRescan} disabled={busy}>{busy ? 'Scanning…' : 'Rescan'}</Button>
       </div>
+
+      {/* The connected board's cable was pulled; the backend keeps looking for it
+          until it is back or the user gives up (Disconnect stops the search). */}
+      {reconnecting && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+          border: '1px solid var(--line)', borderRadius: 10 }}>
+          <LED status="fault" />
+          <span style={{ fontSize: 13, flex: 1 }}>Instrument lost. Waiting for it to be plugged back in…</span>
+          <Button onClick={onDisconnect} disabled={busy}>Stop waiting</Button>
+        </div>
+      )}
 
       {/* One instrument at a time: the backend holds a single driver, and
           connecting to another releases the current one first. */}

@@ -57,6 +57,17 @@ pub const CONFIRM_TIMEOUT: Duration = Duration::from_secs(120);
 #[derive(Default)]
 pub struct Confirmations { next: AtomicU64, pending: Mutex<HashMap<u64, mpsc::Sender<bool>>> }
 
+/// The board the user connected, remembered by serial so it can be found again
+/// after an unplug, possibly on another port (F6, PRD S1-02).
+#[derive(Debug, Clone, Default)]
+pub struct Wanted {
+    pub serial: String,
+    /// Live was running when last seen connected: resume it on reconnect.
+    pub live:   bool,
+    /// Gone, and being looked for.
+    pub lost:   bool,
+}
+
 /// Who made a call. Scripts and agents get errors where the GUI gets clamping.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -178,7 +189,8 @@ fn read(state: &AppState, name: &str) -> Result<Value, ApiError> {
     Ok(match name {
         "device.state" => {
             let connected = lock(&state.driver)?.is_connected();
-            json!(if !connected { "disconnected" } else if state.live.load(Ordering::SeqCst) { "acquiring" } else { "idle" })
+            let lost = lock(&state.wanted)?.as_ref().is_some_and(|w| w.lost);
+            json!(if lost { "reconnecting" } else if !connected { "disconnected" } else if state.live.load(Ordering::SeqCst) { "acquiring" } else { "idle" })
         }
         "device.info" => json!(lock(&state.driver)?.device_metadata()),
         "device.diagnostics" => json!(lock(&state.driver)?.diagnostics()),
@@ -264,9 +276,13 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &
             let port = arg("port").ok_or_else(|| ApiError::new(4011, "INVALID_VALUE", "connect needs a port"))?;
             state.stop_acquisition();
             connect_port(&state.driver, &port).map_err(device)?;
-            Ok(json!(lock(&state.driver)?.device_metadata()))
+            let meta = lock(&state.driver)?.device_metadata();
+            *lock(&state.wanted)? = meta.as_ref().map(|m| Wanted { serial: m.serial.clone(), ..Default::default() });
+            Ok(json!(meta))
         }
         "disconnect" => {
+            // Meant: not a cable to wait for.
+            *lock(&state.wanted)? = None;
             state.stop_acquisition();
             lock(&state.driver)?.disconnect();
             Ok(json!("ok"))
@@ -295,6 +311,9 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &
                 _ => return Err(ApiError::new(4011, "INVALID_VALUE", "update_firmware needs srec or path")),
             };
             state.stop_acquisition();
+            // The watcher must not probe a board that is mid-flash in its
+            // bootloader. A failed install leaves nothing wanted: run it again.
+            *lock(&state.wanted)? = None;
             // Released for the install: it takes tens of seconds, and metadata
             // polls must not stall behind it.
             lock(&state.driver)?.disconnect();
@@ -302,6 +321,9 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &
                 events.emit("firmware-progress", json!({ "stage": stage, "done": done, "total": total }));
             }).map_err(device)?;
             connect_port(&state.driver, &port).map_err(device)?;
+            // Two statements: never hold the driver while taking `wanted` (watch_tick takes them the other way).
+            let meta = lock(&state.driver)?.device_metadata();
+            *lock(&state.wanted)? = meta.map(|m| Wanted { serial: m.serial, ..Default::default() });
             Ok(json!(firmware))
         }
         // A person's answer to a privileged request. The GUI only: nothing
@@ -439,6 +461,48 @@ fn save_capture(state: &AppState, session_id: &str, frame: &SpectrumFrame, raw: 
     };
     Ok(json!({ "id": row.id, "label": row.label, "timestamp": row.timestamp, "tag": row.tag,
                "params": params, "file": row.file_path, "file_error": file_error }))
+}
+
+// ── Reconnect ────────────────────────────────────────────────────────────────
+
+/// How often the watcher looks at the wanted board.
+pub const WATCH_EVERY: Duration = Duration::from_secs(1);
+
+/// One look at the wanted board; `lib.rs` runs it every WATCH_EVERY.
+///
+/// Connected: notice it going away — its port gone (an idle unplug touches
+/// nothing else), or the driver having dropped it after an I/O error. Then stop
+/// the stream and report "reconnecting". Lost: ask `find` for the port the
+/// same serial answers on, connect, and resume Live if it was running.
+/// Settings, dark and reference are the backend's and carry over.
+pub fn watch_tick(state: &AppState, events: &Arc<dyn Events>, find: &dyn Fn(&str) -> Option<String>) {
+    // Held throughout, so a connect or disconnect from a caller waits rather
+    // than being overwritten by what this tick saw.
+    let Ok(mut slot) = state.wanted.lock() else { return };
+    let Some(want) = slot.as_mut() else { return };
+    if !want.lost {
+        let Ok(driver) = state.driver.lock() else { return };
+        let port = driver.device_list().first().map(|d| d.id.clone());
+        if driver.is_connected() && port.as_deref().is_some_and(crate::instrument::port_present) {
+            want.live = state.live.load(Ordering::SeqCst);
+            return;
+        }
+        drop(driver);
+        state.stop_acquisition();
+        if let Ok(mut d) = state.driver.lock() { d.disconnect(); }
+        want.lost = true;
+        eprintln!("[api] instrument {} lost; looking for it", want.serial);
+        events.emit("device-state", json!({ "state": "reconnecting", "serial": want.serial }));
+        return;
+    }
+    let Some(port) = find(&want.serial) else { return };
+    let same = connect_port(&state.driver, &port).is_ok() && state.driver.lock()
+        .is_ok_and(|d| d.device_metadata().is_some_and(|m| m.serial == want.serial));
+    if !same { return; }
+    want.lost = false;
+    eprintln!("[api] instrument {} back on {port}", want.serial);
+    let resumed = want.live && start_live(state, events.clone()).is_ok();
+    events.emit("device-state", json!({ "state": if resumed { "acquiring" } else { "idle" }, "serial": want.serial, "port": port }));
 }
 
 // ── Live stream ──────────────────────────────────────────────────────────────
@@ -608,6 +672,72 @@ mod tests {
         assert!(!log.contains("\"method\":\"read\""));
 
         let _ = child.kill();
+    }
+
+    fn simulator() -> (std::process::Child, String) {
+        let sim = format!("{}/../tools/tcd1304-sim.py", env!("CARGO_MANIFEST_DIR"));
+        let mut child = std::process::Command::new("python3").arg(&sim)
+            .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().unwrap();
+        let mut pty = String::new();
+        std::io::BufReader::new(child.stdout.take().unwrap()).read_line(&mut pty).unwrap();
+        (child, pty.trim().to_string())
+    }
+
+    /// Pull the cable during Live and while idle: the board is reported lost,
+    /// found again on its new port by serial, and Live resumes only if it ran.
+    /// A deliberate disconnect is never undone.
+    #[test]
+    fn a_board_that_comes_back_after_an_unplug_is_reconnected() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path(), dir.path().join("spectra"));
+        let sink = Arc::new(Sink(Mutex::new(vec![])));
+        let ev: Arc<dyn Events> = sink.clone();
+        let call = |v: Value| dispatch(&state, ev.clone(), Caller::Gui, req(v));
+        let st = || call(json!({"method":"read","params":{"name":"device.state"}})).unwrap();
+        let frames = || sink.0.lock().unwrap().iter().filter(|e| *e == "spectrum-frame").count();
+        let wait_frame = || { let n = frames(); for _ in 0..100 { if frames() > n { return true; } std::thread::sleep(Duration::from_millis(50)); } false };
+        let nowhere = |_: &str| None;
+
+        let (mut a, pty_a) = simulator();
+        call(json!({"method":"invoke","params":{"command":"connect","args":{"port":pty_a}}})).unwrap();
+        call(json!({"method":"write","params":{"name":"acquisition.averages","value":1}})).unwrap();
+        call(json!({"method":"invoke","params":{"command":"start_live"}})).unwrap();
+        assert!(wait_frame());
+        watch_tick(&state, &ev, &nowhere);   // seen connected and live
+        assert_eq!(st(), json!("acquiring"));
+
+        // Unplug during Live.
+        a.kill().unwrap(); a.wait().unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        watch_tick(&state, &ev, &nowhere);
+        assert_eq!(st(), json!("reconnecting"));
+        watch_tick(&state, &ev, &nowhere);   // still nowhere: stays lost
+        assert_eq!(st(), json!("reconnecting"));
+
+        // Back (the port may or may not be the same one): reconnected, Live resumed on the same settings.
+        let (mut b, pty_b) = simulator();
+        watch_tick(&state, &ev, &|serial: &str| (serial == "0011223344556677").then(|| pty_b.clone()));
+        assert_eq!(st(), json!("acquiring"));
+        assert!(wait_frame(), "Live did not resume");
+        assert_eq!(call(json!({"method":"read","params":{"name":"acquisition.averages"}})).unwrap(), json!(1));
+
+        // Unplug while idle: only the vanished port says so.
+        call(json!({"method":"invoke","params":{"command":"stop_live"}})).unwrap();
+        watch_tick(&state, &ev, &nowhere);
+        b.kill().unwrap(); b.wait().unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        watch_tick(&state, &ev, &nowhere);
+        assert_eq!(st(), json!("reconnecting"));
+        let (mut c, pty_c) = simulator();
+        watch_tick(&state, &ev, &|_: &str| Some(pty_c.clone()));
+        assert_eq!(st(), json!("idle"), "Live was off; it stays off");
+        assert!(sink.0.lock().unwrap().iter().filter(|e| *e == "device-state").count() >= 4);
+
+        // Disconnect on purpose: nothing comes back.
+        call(json!({"method":"invoke","params":{"command":"disconnect"}})).unwrap();
+        watch_tick(&state, &ev, &|_: &str| Some(pty_c.clone()));
+        assert_eq!(st(), json!("disconnected"));
+        c.kill().ok();
     }
 
     /// A privileged command from a script waits for the GUI; only the GUI can
