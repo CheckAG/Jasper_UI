@@ -39,6 +39,25 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self { Self { integration_ms: 120, averages: 4, workspace: None } }
 }
+impl Settings {
+    /// The integration and averaging last used, so a restart picks up where
+    /// the user left off. Missing or unreadable: the defaults.
+    pub fn load(data_dir: &std::path::Path) -> Self {
+        let saved: Value = std::fs::read_to_string(data_dir.join("settings.json")).ok()
+            .and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let get = |k: &str| saved.get(k).and_then(Value::as_u64).map(|n| n as u32);
+        let d = Self::default();
+        Self { integration_ms: get("integration_ms").unwrap_or(d.integration_ms),
+               averages: get("averages").unwrap_or(d.averages).clamp(1, AVERAGES_MAX), workspace: None }
+    }
+    fn save(&self, data_dir: &std::path::Path) {
+        let body = json!({ "integration_ms": self.integration_ms, "averages": self.averages });
+        // Losing it only costs the user retyping two numbers next launch.
+        if let Err(e) = std::fs::write(data_dir.join("settings.json"), body.to_string()) {
+            eprintln!("[settings] not saved: {e}");
+        }
+    }
+}
 
 pub const AVERAGES_MAX: u32 = 64;
 /// Fractions of the device's full scale (`DeviceMetadata.max_intensity`), so
@@ -241,6 +260,7 @@ fn write(state: &AppState, events: &Arc<dyn Events>, caller: Caller, name: &str,
             {
                 let mut s = lock(&state.settings)?;
                 if name == "acquisition.averages" { s.averages = applied } else { s.integration_ms = applied }
+                s.save(&state.data_dir);
             }
             // The stream runs on the settings it started with; restart it.
             if state.live.load(Ordering::SeqCst) { start_live(state, events.clone())?; }
@@ -878,5 +898,19 @@ mod tests {
         });
         assert_eq!(db::load_captures(&conn, "s1").unwrap().last().unwrap().label.as_deref(), Some("spectra_001"));
         sim.kill().unwrap();
+    }
+
+    /// Integration and averaging survive a restart; the workspace does not.
+    #[test]
+    fn settings_are_restored_on_the_next_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path(), dir.path().join("spectra"));
+        let ev: Arc<dyn Events> = Arc::new(Sink(Mutex::new(vec![])));
+        for (name, value) in [("acquisition.integration_time_ms", json!(750)), ("acquisition.averages", json!(9)), ("workspace.active", json!("s1"))] {
+            dispatch(&state, ev.clone(), Caller::Gui, req(json!({"method":"write","params":{"name":name,"value":value}}))).unwrap();
+        }
+        let s = Settings::load(dir.path());
+        assert_eq!((s.integration_ms, s.averages, s.workspace), (750, 9, None));
+        assert_eq!(Settings::load(&dir.path().join("nowhere")).integration_ms, Settings::default().integration_ms);
     }
 }

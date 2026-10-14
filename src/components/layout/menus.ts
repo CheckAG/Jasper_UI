@@ -44,6 +44,7 @@ export function buildMenus(): Menu[] {
         action: connected && acq.paused ? () => { acq.runCapture(); } : undefined,
         hint: connected ? 'Freeze first' : needDevice },
       { label: 'Burst capture…', action: connected ? () => ui.setDialog('burst') : undefined, hint: needDevice },
+      { label: 'Settings profiles…', action: () => ui.setDialog('profiles') },
       '-',
       { label: acq.calHeld.dark ? 'Remove dark' : 'Take dark', shortcut: 'D',
         action: acq.calHeld.dark || acq.liveSpectrum ? () => { acq.toggleCal('dark'); } : undefined,

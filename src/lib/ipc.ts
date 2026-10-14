@@ -16,7 +16,7 @@ import type {
   AcqParams, Spectrum, DeviceInfo, DeviceEvent, DeviceMetadata, DiagEntry,
   CalResult, XCalResult, PipelineNode, PipelineResult,
   ChemAlgorithm, ModelMeta, PCAResult, RegressionResult,
-  PredictionResult, MixtureResult, Session, Capture,
+  PredictionResult, MixtureResult, Session, Capture, Profile,
 } from './types';
 import type {
   DeviceRowDTO, DiagEntryDTO, DeviceMetadataDTO, FrameDTO, CalResultDTO, XCalResultDTO,
@@ -568,6 +568,14 @@ export const ipc = {
         id: entry.id, session_id: entry.sessionId, action: entry.action,
         actor: entry.actor, timestamp: entry.timestamp, detail: entry.detail,
       }})
+    : Promise.resolve(),
+
+  /** Named settings profiles, kept by the backend in profiles.json. */
+  loadProfiles: (): Promise<Profile[]> => IS_TAURI
+    ? tauriInvoke<Profile[]>('cmd_load_profiles')
+    : Promise.resolve([]),
+  saveProfiles: (profiles: Profile[]): Promise<void> => IS_TAURI
+    ? tauriInvoke('cmd_save_profiles', { profiles })
     : Promise.resolve(),
 
   // ── Tauri event listeners ────────────────────────────────────────────────────

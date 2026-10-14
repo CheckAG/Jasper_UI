@@ -254,3 +254,13 @@ export interface XCalResult {
   coefficients: number[];
   peaksFound:   number;
 }
+
+/** A named set of acquisition and burst settings (Acquire ▸ Profiles). Stored
+ *  as-is in profiles.json by the backend, which does not read it. */
+export interface Profile {
+  name:        string;
+  integration: number;   // ms
+  averaging:   number;
+  burst:       BurstSettings;
+}
+export interface BurstSettings { count: number; seconds: number; label: string }

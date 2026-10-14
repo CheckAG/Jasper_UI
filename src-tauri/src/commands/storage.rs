@@ -9,6 +9,26 @@ fn open(state: &AppState) -> Result<rusqlite::Connection, String> {
     db::open(&state.db_path).map_err(|e| e.to_string())
 }
 
+// ── Settings profiles ─────────────────────────────────────────────────────────
+// Named sets of acquisition and burst settings. The frontend owns their shape;
+// the backend only keeps the list, as JSON in the app data folder.
+
+#[tauri::command]
+pub fn cmd_load_profiles(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    match std::fs::read_to_string(state.data_dir.join("profiles.json")) {
+        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("profiles.json is unreadable: {e}")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(serde_json::json!([])),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn cmd_save_profiles(state: State<'_, AppState>, profiles: serde_json::Value) -> Result<(), String> {
+    if !profiles.is_array() { return Err("profiles must be a list".into()); }
+    std::fs::write(state.data_dir.join("profiles.json"), serde_json::to_string_pretty(&profiles).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+
 // ── Sessions ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { AcqParams, CursorState, Spectrum, DeviceMetadata } from '../lib/types';
+import type { AcqParams, CursorState, Spectrum, DeviceMetadata, BurstSettings } from '../lib/types';
 import { ipc } from '../lib/ipc';
 import { useSessionStore } from './sessionStore';
 import { useUIStore } from './uiStore';
@@ -28,6 +28,9 @@ interface AcqStore {
   calBusy: 'dark' | 'reference' | null;
   /** A burst is running; `captureProgress` then counts shots, not scans. */
   bursting: boolean;
+  /** What the Burst dialog shows; here so a settings profile can carry it. */
+  burstSettings: BurstSettings;
+  setBurstSettings: (b: Partial<BurstSettings>) => void;
 
   setParam: <K extends keyof AcqParams>(key: K, value: AcqParams[K]) => void;
   setCursor: (c: CursorState | null) => void;
@@ -90,6 +93,8 @@ export const useAcqStore = create<AcqStore>()(
     captureProgress: null,
     calBusy:      null,
     bursting:     false,
+    burstSettings: { count: 10, seconds: 0, label: '' },
+    setBurstSettings: (b) => set((s) => { Object.assign(s.burstSettings, b); }),
     sampleTag:    '',
     captureName:  '',
     setCaptureName: (n) => set((s) => { s.captureName = n; }),

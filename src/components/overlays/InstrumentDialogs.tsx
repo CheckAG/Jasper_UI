@@ -5,7 +5,7 @@ import { ipc }           from '../../lib/ipc';
 import { LED }           from '../design/LED';
 import { Button }        from '../design/Button';
 import { Modal }         from './Modal';
-import type { DeviceInfo, DiagEntry, CalStatus } from '../../lib/types';
+import type { DeviceInfo, DiagEntry, CalStatus, Profile } from '../../lib/types';
 
 /** X-axis (wavelength) calibration. Dark and reference are taken from the toolbar. */
 function CalibrationPanel({ connected }: { connected: boolean }) {
@@ -441,10 +441,8 @@ function ShortcutsDialog({ onClose }: { onClose: () => void }) {
 /** N captures, optionally spaced out in time. The burst runs in the backend;
  *  closing the dialog does not stop it, Stop does (keeping the shots taken). */
 function BurstDialog({ onClose }: { onClose: () => void }) {
-  const { runBurst, sampleTag, captureProgress, paused } = useAcqStore();
-  const [count, setCount] = useState(10);
-  const [seconds, setSeconds] = useState(0);
-  const [label, setLabel] = useState('');
+  const { runBurst, sampleTag, captureProgress, paused, burstSettings, setBurstSettings } = useAcqStore();
+  const { count, seconds, label } = burstSettings;
   const [tag, setTag] = useState(sampleTag);
   // From the store, so reopening the dialog mid-burst still shows progress and Stop.
   const running = captureProgress !== null;
@@ -460,11 +458,11 @@ function BurstDialog({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Burst capture" subtitle="Each shot is a full capture, saved in the workspace" width={440} onClose={onClose}>
       {field('Shots', <input type="number" min={1} max={1000} step={1} value={count} disabled={running}
-        onChange={e => setCount(Number(e.target.value))} style={input} />, '1 to 1000')}
+        onChange={e => setBurstSettings({ count: Number(e.target.value) })} style={input} />, '1 to 1000')}
       {field('Interval (s)', <input type="number" min={0} max={3600} step={0.1} value={seconds} disabled={running}
-        onChange={e => setSeconds(Number(e.target.value))} style={input} />, 'From the start of one shot to the next. 0 = back to back.')}
+        onChange={e => setBurstSettings({ seconds: Number(e.target.value) })} style={input} />, 'From the start of one shot to the next. 0 = back to back.')}
       {field('Name', <input type="text" placeholder="spectra_### (automatic)" value={label} disabled={running}
-        onChange={e => setLabel(e.target.value)} style={input} />, 'Shots are named name_001, name_002, …')}
+        onChange={e => setBurstSettings({ label: e.target.value })} style={input} />, 'Shots are named name_001, name_002, …')}
       {field('Sample tag', <input type="text" value={tag} disabled={running}
         onChange={e => setTag(e.target.value)} style={input} />)}
       {running && captureProgress && (
@@ -487,6 +485,60 @@ function BurstDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Save the current integration, averaging and burst settings under a name;
+ *  load or delete saved ones. */
+function ProfilesDialog({ onClose }: { onClose: () => void }) {
+  const { params, burstSettings, writeSetting, setBurstSettings } = useAcqStore();
+  const pushToast = useUIStore(s => s.pushToast);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [name, setName] = useState('');
+  useEffect(() => { ipc.loadProfiles().then(setProfiles).catch(e => pushToast(String(e), 'error')); }, [pushToast]);
+
+  const store = (next: Profile[]) => ipc.saveProfiles(next).then(() => setProfiles(next))
+    .catch(e => pushToast(String(e), 'error'));
+  const save = () => {
+    const n = name.trim();
+    const p: Profile = { name: n, integration: params.integration, averaging: params.averaging, burst: { ...burstSettings } };
+    // Same name overwrites: saving "Leaf" again updates it.
+    store([...profiles.filter(x => x.name !== n), p].sort((a, b) => a.name.localeCompare(b.name)));
+    setName('');
+  };
+  const load = async (p: Profile) => {
+    await writeSetting('integration', p.integration);
+    await writeSetting('averaging', p.averaging);
+    setBurstSettings(p.burst);
+    pushToast(`Loaded profile "${p.name}".`, 'success');
+  };
+  const summary = (p: Profile) => `${p.integration} ms · avg ${p.averaging} · burst ${p.burst.count}` +
+    (p.burst.seconds ? ` every ${p.burst.seconds} s` : '') + (p.burst.label ? ` as ${p.burst.label}_###` : '');
+
+  return (
+    <Modal title="Settings profiles" subtitle="Integration, averaging and burst settings" width={480} onClose={onClose}>
+      {profiles.length === 0 && <span style={{ fontSize: 13, color: 'var(--muted)' }}>No profiles yet.</span>}
+      {profiles.map(p => (
+        <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{summary(p)}</div>
+          </div>
+          <Button size="sm" onClick={() => load(p)}>Load</Button>
+          <Button size="sm" variant="danger" onClick={() => store(profiles.filter(x => x !== p))}>Delete</Button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 10, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+        <input type="text" placeholder="Profile name" value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && name.trim()) save(); }}
+          style={{ flex: 1, height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)', borderRadius: 8,
+            background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none' }} />
+        <Button variant="primary" disabled={!name.trim()} onClick={save}
+          title={profiles.some(p => p.name === name.trim()) ? 'Replaces the profile with this name' : undefined}>
+          Save current
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 /** Whichever menu-bar dialog is open. */
 export function DeviceDialogs() {
   const { dialog, setDialog } = useUIStore();
@@ -498,6 +550,7 @@ export function DeviceDialogs() {
     case 'diagnostics': return <DiagnosticsDialog onClose={close} />;
     case 'shortcuts':   return <ShortcutsDialog onClose={close} />;
     case 'burst':       return <BurstDialog onClose={close} />;
+    case 'profiles':    return <ProfilesDialog onClose={close} />;
     case 'xcal':        return <Modal title="X-axis calibration" onClose={close}><CalibrationPanel connected={connected} /></Modal>;
     default:            return null;
   }
