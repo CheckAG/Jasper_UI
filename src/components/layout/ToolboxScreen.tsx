@@ -63,7 +63,6 @@ function PlotBanners() {
 export function ToolboxScreen() {
   const { params, paused, liveSpectrum, setCursor } = useAcqStore();
   const { captures, selectedIds } = useSessionStore();
-  const setExportOpen = useUIStore(s => s.setExportOpen);
   // Only the user-selected captures are overlaid, so the default view is one clean live trace.
   const overlay = captures.filter(c => selectedIds.includes(c.id));
 
@@ -76,12 +75,6 @@ export function ToolboxScreen() {
         <ConnectionChip />
         <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)' }} />
         <div style={{ flex: 1, minWidth: 0 }}><ModeStrip /></div>
-        <button onClick={() => setExportOpen(true)} disabled={captures.length === 0}
-          title={captures.length ? 'Export captures' : 'No captures to export'} style={{
-            padding: '6px 12px', border: '1px solid var(--line)', borderRadius: 8, flexShrink: 0,
-            background: 'var(--paper)', color: 'var(--ink-2)', fontFamily: 'var(--font-sans)', fontSize: 13,
-            cursor: captures.length ? 'pointer' : 'not-allowed', opacity: captures.length ? 1 : 0.5,
-          }}>Export…</button>
       </div>
 
       <main className="toolbox-body">
