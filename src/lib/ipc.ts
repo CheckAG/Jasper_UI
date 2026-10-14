@@ -16,7 +16,7 @@ import type {
   AcqParams, Spectrum, DeviceInfo, DeviceEvent, DeviceMetadata, DiagEntry,
   CalResult, XCalResult, PipelineNode, PipelineResult,
   ChemAlgorithm, ModelMeta, PCAResult, RegressionResult,
-  PredictionResult, MixtureResult, Session, Capture, Profile,
+  PredictionResult, MixtureResult, Session, Capture, Profile, Recent,
 } from './types';
 import type {
   DeviceRowDTO, DiagEntryDTO, DeviceMetadataDTO, FrameDTO, CalResultDTO, XCalResultDTO,
@@ -572,10 +572,23 @@ export const ipc = {
 
   /** Named settings profiles, kept by the backend in profiles.json. */
   loadProfiles: (): Promise<Profile[]> => IS_TAURI
-    ? tauriInvoke<Profile[]>('cmd_load_profiles')
+    ? tauriInvoke<Profile[] | null>('cmd_load_store', { name: 'profiles' }).then(p => p ?? [])
     : Promise.resolve([]),
   saveProfiles: (profiles: Profile[]): Promise<void> => IS_TAURI
-    ? tauriInvoke('cmd_save_profiles', { profiles })
+    ? tauriInvoke('cmd_save_store', { name: 'profiles', value: profiles })
+    : Promise.resolve(),
+
+  /** Recent workspaces and exports, kept by the backend in recent.json. */
+  loadRecent: (): Promise<Recent | null> => IS_TAURI
+    ? tauriInvoke<Recent | null>('cmd_load_store', { name: 'recent' })
+    : Promise.resolve(null),
+  saveRecent: (recent: Recent): Promise<void> => IS_TAURI
+    ? tauriInvoke('cmd_save_store', { name: 'recent', value: recent })
+    : Promise.resolve(),
+
+  /** Show a file in the system file manager. */
+  reveal: (path: string): Promise<void> => IS_TAURI
+    ? tauriInvoke('cmd_reveal', { path })
     : Promise.resolve(),
 
   // ── Tauri event listeners ────────────────────────────────────────────────────

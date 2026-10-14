@@ -264,3 +264,9 @@ export interface Profile {
   burst:       BurstSettings;
 }
 export interface BurstSettings { count: number; seconds: number; label: string }
+
+/** recent.json: when each workspace was last opened, and the last exports. */
+export interface Recent {
+  opened:  Record<string, number>;              // session id → ms since epoch
+  exports: { path: string; at: number }[];      // newest first
+}

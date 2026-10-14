@@ -75,8 +75,9 @@ pub fn run() {
             cmd_delete_capture,
             cmd_count_captures,
             cmd_save_audit,
-            cmd_load_profiles,
-            cmd_save_profiles,
+            cmd_load_store,
+            cmd_save_store,
+            cmd_reveal,
             // Sidecar
             cmd_sidecar_request,
             // Export

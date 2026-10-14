@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import type { Session, Capture } from '../lib/types';
 import { ipc } from '../lib/ipc';
 import { toast } from './uiStore';
+import { useRecentStore } from './recentStore';
 
 const PALETTE = [
   '#1f5dff','#06b6c4','#6b4ee0','#d97706',
@@ -72,12 +73,11 @@ export const useSessionStore = create<SessionStore>()(
       if (initStarted) return;
       initStarted = true;
       try {
-        const dbSessions = await ipc.loadSessions();
+        const [dbSessions] = await Promise.all([ipc.loadSessions(), useRecentStore.getState().load()]);
 
-        // Startup always lands on the default session, whatever else is in the
-        // database — the previously-active row is not remembered, and the
-        // first row SQLite hands back is not a meaningful choice.
-        // ponytail: matched by name; a renamed default makes a second one.
+        // Startup lands on the workspace used last (recent.json), else the
+        // default session — the first row SQLite hands back is not a meaningful choice.
+        // ponytail: default matched by name; a renamed default makes a second one.
         // Key it on a column if that turns out to matter.
         set(store => {
           store.sessions = dbSessions;
@@ -87,8 +87,11 @@ export const useSessionStore = create<SessionStore>()(
         // No default in the database (first run, or it was deleted) — there has
         // to be somewhere to put a capture, so one empty session is created.
         // It holds no data; it is just a place to start.
-        const activeId =
-          dbSessions.find(s => s.name === DEFAULT_SESSION_NAME)?.id
+        // The workspace used last, if it still exists; else the default.
+        const opened = useRecentStore.getState().opened;
+        const last = dbSessions.filter(s => opened[s.id]).sort((a, b) => opened[b.id] - opened[a.id])[0];
+        const activeId = last?.id
+          ?? dbSessions.find(s => s.name === DEFAULT_SESSION_NAME)?.id
           ?? get().addSession(DEFAULT_SESSION_NAME, '', '').id;
         set(s => { s.activeId = activeId; });
 
@@ -238,5 +241,6 @@ export const useSessionStore = create<SessionStore>()(
 useSessionStore.subscribe((s, prev) => {
   if (s.activeId && s.activeId !== prev.activeId) {
     ipc.writeSetting('workspace.active', s.activeId).catch(e => console.warn('workspace.active:', e));
+    useRecentStore.getState().markOpened(s.activeId);
   }
 });
