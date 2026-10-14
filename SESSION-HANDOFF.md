@@ -6,18 +6,19 @@ status: https://claude.ai/artifact/DhQJxj99bYngZ8g4FPYtZq. This file says what h
 
 ## Now
 
-**`UI_improvements` is finished** (user, 2026-10-14) and waiting to merge into `master`. The PR text is
-drafted (compare link: https://github.com/CheckAG/Jasper_UI/compare/master...UI_improvements). Open
-decisions for the user: open the PR themselves, or merge locally and push `master`; and whether to
-rewrite the branch to strip the old `Co-Authored-By` trailers (needs a force-push). Other candidates after this branch: F5 Stage-2 MCP tools (PRD MHS-05), S1-08 axis
-lock, S1-13 two plot panes, NFR-03, FIO-01, Windows build (#14).
+**`UI_improvements` is merged to `master`** (PR #42, `76baf24`, 2026-10-14; remote branch deleted, local
+deleted). Nothing is in flight. Start the next work on a new branch from `master` (`/new-branch`).
+Candidates, ask the user which: F5 Stage-2 MCP tools (PRD MHS-05), S1-08 axis lock, S1-13 two plot
+panes, NFR-03 performance measurement, FIO-01 data-folder setting, the Windows build (#14). When a
+requirement changes status, update its row in the PRD tracker.
 
 ## State
 
 **Phase F F1–F4 and F6 done (F6 merged as PR #40); F5 done except Stage-2 MCP tools.** Phase E stays
 at 9 of 12. `feature_list.json` has no entries for Phase F or the UI work, so no status changed.
+PRD tracker: no status changed by the UI work; notes on S1-06, S1-12, NFR-05, APP-01 updated 2026-10-14.
 
-**Built 2026-10-14 on `UI_improvements`, all verified on the board by the user:**
+**Built 2026-10-14 on `UI_improvements` (merged as PR #42), all verified on the board by the user:**
 - `e65ce9e` Captures panel redesign (design canvas: https://claude.ai/artifact/9ip4iiLEsR7rnephnmZFKG,
   option "A cards + B grouping"): spectrum cards with a sparkline, search, "N on the plot · Clear", burst
   shots folded into one group with Show all / Hide all. No eye button (user removed it). Grouping in
@@ -58,7 +59,7 @@ at 9 of 12. `feature_list.json` has no entries for Phase F or the UI work, so no
 
 ## Uncommitted work
 
-Clean.
+This handoff only, on `master`.
 
 ## Learned this session
 
