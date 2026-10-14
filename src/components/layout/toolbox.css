@@ -22,6 +22,9 @@
   overflow-y: auto;
 }
 .toolbox-center { overflow: hidden; }
+/* The controls card takes the column's spare height, so its bottom edge lines
+   up with the plot and the captures panel. Content stays at the top. */
+.toolbox-left > :last-child { flex: 1 0 auto; align-content: flex-start; }
 .toolbox-panel {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
