@@ -123,7 +123,8 @@ Stage-2 MCP tools (`jasper_capture` etc.), calibration writes as privileged comm
 **Partly built, verified on the board 2026-10-12:** saturation banner + peak meter (`peak` on every
 frame, fraction of the device's full scale on the raw frame; 1.0 when a pixel hits the ADC limit), stale-dark
 banner (`reference.dark_stale`, shown 5 s each time the dark goes stale), fps + peak in the status bar (cursor readout already there). The CSV header
-shipped with F2. Still open: settings profiles, recent sessions, burst capture, auto-reconnect.
+shipped with F2. **Rest done 2026-10-14 (PR #40), verified on the board:** auto-reconnect, burst capture,
+settings profiles (+ last settings restored on start), recent workspaces and exports.
 - Saturation flag **on the processed scale** (`max - raw`, video is inverted): peak % of the measured swing, banner at ≥98%. The docs' "98% of 65 535" does not apply to this board.
 - Stale-dark warning when integration or averaging changed since the dark.
 - Status bar fps + peak meter + cursor readout.
