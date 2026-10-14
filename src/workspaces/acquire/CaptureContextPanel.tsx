@@ -128,7 +128,7 @@ function BurstGroup({ caps, open, setOpen, selectedIds, toggle, remove }: {
           </span>
         )}
         <button onClick={showAll} aria-label={`${allOn ? 'Hide' : 'Show'} all shots of ${name}`}
-          style={{ height: 26, padding: '0 9px', borderRadius: 7, fontSize: 'var(--text-sm)', cursor: 'pointer', flexShrink: 0,
+          style={{ height: 'var(--row-h-sm)', padding: '0 9px', borderRadius: 7, fontSize: 'var(--text-sm)', cursor: 'pointer', flexShrink: 0,
             border: allOn ? 0 : '1px solid var(--line)', background: allOn ? 'var(--signal)' : 'var(--paper)',
             color: allOn ? 'var(--paper)' : 'var(--ink-2)' }}>
           {allOn ? 'Hide all' : 'Show all'}
@@ -166,7 +166,7 @@ export function CaptureContextPanel() {
           background: 'var(--tint)', color: 'var(--ink-2)' }}>{captures.length}</span>
         <button onClick={() => setExportOpen(true)} disabled={captures.length === 0}
           title={captures.length ? 'Export this workspace\'s captures' : 'No captures to export'}
-          style={{ marginLeft: 'auto', height: 28, padding: '0 10px', border: '1px solid var(--line)', borderRadius: 8,
+          style={{ marginLeft: 'auto', height: 'var(--row-h-sm)', padding: '0 10px', border: '1px solid var(--line)', borderRadius: 8,
             background: 'var(--paper)', color: 'var(--ink-2)', fontSize: 'var(--text-md)',
             cursor: captures.length ? 'pointer' : 'not-allowed', opacity: captures.length ? 1 : 0.5 }}>
           Export
@@ -179,7 +179,7 @@ export function CaptureContextPanel() {
             border: '1px solid var(--line)', background: 'var(--tint)' }}>Space</kbd> to capture
         </span>
       ) : <>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 32, padding: '0 10px',
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 'var(--row-h)', padding: '0 10px',
           border: '1px solid var(--line)', borderRadius: 8, background: 'var(--paper)' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round" aria-hidden>
             <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />

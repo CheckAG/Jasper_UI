@@ -22,6 +22,7 @@ export function StaticChart({ xs, series, height = 260 }: StaticChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [width, setWidth] = useState(0);
   const theme = useUIStore(s => s.theme);
+  const density = useUIStore(s => s.density);
 
   // Measure the wrapper (never the canvas) — decouples sizing from data redraws,
   // which prevents the canvas-feeds-its-own-width shrink loop.
@@ -62,7 +63,8 @@ export function StaticChart({ xs, series, height = 260 }: StaticChartProps) {
     // Grid
     const css = getComputedStyle(document.documentElement);
     ctx.strokeStyle = `rgba(${css.getPropertyValue('--ink-rgb').trim() || '15,17,21'},0.06)`; ctx.lineWidth = 1;
-    ctx.font = '10px "Geist Mono", monospace';
+    const scale = parseFloat(css.getPropertyValue('--text-scale')) || 1;
+    ctx.font = `${10 * scale}px ${css.getPropertyValue('--font-mono').trim() || 'monospace'}`;
     ctx.fillStyle = css.getPropertyValue('--muted').trim() || '#7a808a';
     // Ticks derive from the data's x range (mock NIR and real device differ)
     const rawStep = (xMax - xMin) / 5;
@@ -94,7 +96,7 @@ export function StaticChart({ xs, series, height = 260 }: StaticChartProps) {
       ctx.stroke();
     });
     ctx.setLineDash([]);
-  }, [xs, series, height, width, theme]);
+  }, [xs, series, height, width, theme, density]);
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height }}>

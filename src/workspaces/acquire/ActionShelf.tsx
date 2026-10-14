@@ -37,7 +37,7 @@ export function ActionShelf() {
   return (
     <div style={{
       display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end',
-      gap: 16, padding: '12px 14px', border: '1px solid var(--line)',
+      gap: 16, padding: 'var(--pad)', border: '1px solid var(--line)',
       borderRadius: 'var(--radius-lg)', background: 'var(--paper)', flexShrink: 0,
     }}>
       {/* Integration */}
@@ -69,11 +69,11 @@ export function ActionShelf() {
         <label className="mono" style={labelStyle}>Averaging</label>
         <div style={{ ...rowStyle, gap: 6 }}>
           <button onClick={() => writeSetting('averaging', Math.max(1, params.averaging - 1))}
-            style={{ width: 28, height: 28, flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
+            style={{ width: 'var(--row-h-sm)', height: 'var(--row-h-sm)', flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
               background: 'var(--paper)', cursor: 'pointer', fontSize: 'var(--text-lg)' }}>−</button>
           <span className="mono" style={{ flex: 1, textAlign: 'center', fontSize: 'var(--text-base)' }}>{params.averaging}</span>
           <button onClick={() => writeSetting('averaging', Math.min(64, params.averaging + 1))}
-            style={{ width: 28, height: 28, flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
+            style={{ width: 'var(--row-h-sm)', height: 'var(--row-h-sm)', flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
               background: 'var(--paper)', cursor: 'pointer', fontSize: 'var(--text-lg)' }}>+</button>
         </div>
       </div>
@@ -111,7 +111,7 @@ export function ActionShelf() {
           style={{
           position: 'relative', overflow: 'hidden',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          padding: '10px 14px', background: 'var(--ink)', color: 'var(--paper)',
+          minHeight: 'calc(var(--row-h) + 8px)', padding: '0 14px', background: 'var(--ink)', color: 'var(--paper)',
           border: 0, borderRadius: 10, cursor: busyCapture ? 'progress' : 'pointer',
           fontSize: 'var(--text-base)', fontWeight: 600,
           boxShadow: '0 6px 16px -8px rgba(15,17,21,0.4), inset 0 1px 0 rgba(255,255,255,0.08)',

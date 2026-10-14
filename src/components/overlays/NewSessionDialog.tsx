@@ -53,7 +53,7 @@ export function NewSessionDialog() {
             { label: 'Workspace name', content: (
               <input autoFocus value={name} onChange={e => setName(e.target.value)}
                 placeholder="e.g. Maize Leaf — Run 5"
-                style={{ height: 36, padding: '0 10px', width: '100%',
+                style={{ height: 'var(--row-h)', padding: '0 10px', width: '100%',
                   border: '1px solid var(--line)', borderRadius: 8,
                   background: 'var(--paper)', color: 'var(--ink)',
                   fontSize: 'var(--text-base)', outline: 'none',
@@ -61,7 +61,7 @@ export function NewSessionDialog() {
             )},
             { label: 'Instrument', content: (
               <select value={device} onChange={e => setDevice(e.target.value)}
-                style={{ height: 36, padding: '0 10px', width: '100%',
+                style={{ height: 'var(--row-h)', padding: '0 10px', width: '100%',
                   border: '1px solid var(--line)', borderRadius: 8,
                   background: 'var(--paper)', color: 'var(--ink)',
                   fontSize: 'var(--text-base)', cursor: 'pointer',
@@ -71,7 +71,7 @@ export function NewSessionDialog() {
             )},
             { label: 'Method', content: (
               <select value={method} onChange={e => setMethod(e.target.value)}
-                style={{ height: 36, padding: '0 10px', width: '100%',
+                style={{ height: 'var(--row-h)', padding: '0 10px', width: '100%',
                   border: '1px solid var(--line)', borderRadius: 8,
                   background: 'var(--paper)', color: 'var(--ink)',
                   fontSize: 'var(--text-base)', cursor: 'pointer',
@@ -84,7 +84,7 @@ export function NewSessionDialog() {
             { label: 'Operator (optional)', content: (
               <input value={operator} onChange={e => setOperator(e.target.value)}
                 placeholder="who is running this workspace"
-                style={{ height: 36, padding: '0 10px', width: '100%',
+                style={{ height: 'var(--row-h)', padding: '0 10px', width: '100%',
                   border: '1px solid var(--line)', borderRadius: 8,
                   background: 'var(--paper)', color: 'var(--ink)',
                   fontSize: 'var(--text-base)', outline: 'none',

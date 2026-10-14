@@ -43,8 +43,9 @@
 
   /* --- Density: Standard (default) --- */
   --gap:        10px;
-  --pad:        12px;
-  --row-h:      32px;
+  --pad:        14px; /* inside cards and panels */
+  --row-h:      32px; /* buttons, inputs, menu rows */
+  --row-h-sm:   28px; /* icon and small buttons */
   --radius-sm:  7px;
   --radius-md:  10px;
   --radius-lg:  14px;
@@ -75,15 +76,17 @@
 /* --- Density overrides --- */
 [data-density="comfort"] {
   --gap:       16px;
-  --pad:       16px;
-  --text-scale: 1.1;
+  --pad:       20px;
+  --text-scale: 1.15;
   --row-h:     40px;
+  --row-h-sm:  34px;
 }
 [data-density="lab"] {
   --gap:       6px;
-  --pad:       8px;
-  --text-scale: 0.9;
+  --pad:       10px;
+  --text-scale: 0.85;
   --row-h:     28px;
+  --row-h-sm:  24px;
 }
 
 /* --- Spectrum palette — 12 perceptually-uniform hues (oklch L≈0.62, c≈0.16) --- */

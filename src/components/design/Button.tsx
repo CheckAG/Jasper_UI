@@ -30,7 +30,8 @@ export function Button({ variant = 'ghost', size = 'md', style, children, ...res
     <button
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        padding: size === 'sm' ? '4px 10px' : '7px 14px',
+        height: size === 'sm' ? 'var(--row-h-sm)' : 'var(--row-h)',
+        padding: size === 'sm' ? '0 10px' : '0 14px',
         borderRadius: size === 'sm' ? 6 : 9,
         fontSize: size === 'sm' ? 'var(--text-md)' : 'var(--text-base)', fontWeight: 500,
         cursor: 'pointer', letterSpacing: '-0.005em', transition: 'opacity 0.1s',

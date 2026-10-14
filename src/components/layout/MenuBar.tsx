@@ -30,7 +30,7 @@ function Dropdown({ anchor, onClose, children }: {
 
 const itemStyle = (enabled: boolean): React.CSSProperties => ({
   display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 24, width: '100%',
-  padding: '7px 10px', border: 0, borderRadius: 6, background: 'transparent', textAlign: 'left',
+  minHeight: 'var(--row-h)', padding: '0 10px', border: 0, borderRadius: 6, background: 'transparent', textAlign: 'left',
   fontSize: 'var(--text-base)', color: enabled ? 'var(--ink)' : 'var(--muted)',
   cursor: enabled ? 'pointer' : 'not-allowed',
 });
@@ -65,7 +65,7 @@ function WorkspaceSwitcher() {
     <>
       <button onClick={e => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
         title="Switch workspace" aria-haspopup="menu" style={{
-          display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, maxWidth: 360, height: 32,
+          display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, maxWidth: 360, height: 'var(--row-h)',
           padding: '0 10px 0 6px', border: '1px solid var(--line-2)', borderRadius: 8,
           background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer', }}>
         <span className="mono" style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em',
@@ -117,7 +117,7 @@ export function MenuBar() {
   return (
     <header style={{
       display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 14px',
-      padding: '6px 16px', minHeight: 46, borderBottom: '1px solid var(--line)', background: 'var(--paper)',
+      padding: '6px 16px', minHeight: 'calc(var(--row-h) + 14px)', borderBottom: '1px solid var(--line)', background: 'var(--paper)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <span style={{ fontWeight: 600, fontSize: 'var(--text-lg)', letterSpacing: '-0.01em' }}>JASPER</span>
@@ -133,7 +133,7 @@ export function MenuBar() {
               setOpen(open?.menu.name === m.name ? null : { menu: buildMenus().find(x => x.name === m.name)!, anchor });
             }}
             style={{
-              padding: '5px 10px', border: 0, borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
+              height: 'var(--row-h-sm)', padding: '0 10px', border: 0, borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
               background: open?.menu.name === m.name ? 'var(--tint)' : 'transparent',
               color: open?.menu.name === m.name ? 'var(--ink)' : 'var(--ink-2)',
               fontSize: 'var(--text-base)',
@@ -144,7 +144,7 @@ export function MenuBar() {
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <WorkspaceSwitcher />
         <button onClick={() => setTheme(next)} title={`Switch to ${next} theme`} aria-label={`Switch to ${next} theme`}
-          style={{ width: 32, height: 32, display: 'grid', placeItems: 'center', padding: 0, flexShrink: 0,
+          style={{ width: 'var(--row-h)', height: 'var(--row-h)', display: 'grid', placeItems: 'center', padding: 0, flexShrink: 0,
             border: '1px solid var(--line-2)', borderRadius: 8, background: 'var(--paper)',
             color: 'var(--ink-2)', cursor: 'pointer' }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -155,7 +155,7 @@ export function MenuBar() {
           </svg>
         </button>
         <button onClick={() => setCmdOpen(true)} title="Search commands" style={{
-          height: 32, padding: '0 10px', border: '1px solid var(--line-2)', borderRadius: 8, flexShrink: 0,
+          height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line-2)', borderRadius: 8, flexShrink: 0,
           background: 'var(--paper)', color: 'var(--ink-2)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)',
         }}>⌘K</button>
       </div>

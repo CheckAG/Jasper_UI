@@ -20,7 +20,7 @@ export function StatusBar() {
       display: 'flex', alignItems: 'center', gap: 18, padding: '0 16px',
       borderTop: '1px solid var(--line)', background: 'var(--paper)',
       fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: 'var(--muted)',
-      height: 32, flexShrink: 0,
+      height: 'var(--row-h)', flexShrink: 0,
     }}>
       {cursor ? (
         <>

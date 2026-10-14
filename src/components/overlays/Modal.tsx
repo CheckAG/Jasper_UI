@@ -32,7 +32,7 @@ export function Modal({ title, subtitle, width = 520, onClose, children }: {
             {subtitle && <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{subtitle}</span>}
           </div>
           <button onClick={onClose} aria-label="Close" style={{
-            width: 28, height: 28, border: '1px solid var(--line)', borderRadius: 8,
+            width: 'var(--row-h-sm)', height: 'var(--row-h-sm)', border: '1px solid var(--line)', borderRadius: 8,
             background: 'var(--paper)', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 'var(--text-lg)', lineHeight: 1,
           }}>×</button>
         </div>

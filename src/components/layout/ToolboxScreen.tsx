@@ -18,7 +18,7 @@ function ConnectionChip() {
   const setDialog = useUIStore(s => s.setDialog);
   return (
     <button onClick={() => setDialog('instruments')} title="Instruments" style={{
-      display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', flexShrink: 0,
+      display: 'flex', alignItems: 'center', gap: 8, height: 'var(--row-h)', padding: '0 12px', flexShrink: 0,
       border: `1px solid ${meta ? 'var(--line)' : 'var(--accent-alarm)'}`, borderRadius: 8,
       background: 'var(--paper)', color: meta ? 'var(--ink-2)' : 'var(--accent-alarm)',
       cursor: 'pointer', fontSize: 'var(--text-base)',
