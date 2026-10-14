@@ -442,13 +442,15 @@ fn burst(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Val
     let generation = state.acq_generation.load(Ordering::SeqCst);
     let stopped = || state.acq_generation.load(Ordering::SeqCst) != generation;
 
+    let burst_id = now_ms();
     let mut ids = Vec::new();
     let mut last = Value::Null;
     for i in 1..=count {
         let started = std::time::Instant::now();
         let mut shot = args.clone();
         shot["label"] = label.map_or(Value::Null, |l| json!(format!("{l}_{i:03}")));
-        shot["id"] = json!(format!("cap-{}-{i}", now_ms()));   // shots can land in the same millisecond
+        // One burst, one id stem: the Captures panel groups its shots by it.
+        shot["id"] = json!(format!("burst-{burst_id}-{i:03}"));
         let out = shoot(state, events, &shot)?;
         ids.push(out["saved"]["id"].clone());
         last = out["frame"].clone();
@@ -885,6 +887,8 @@ mod tests {
         let rows = db::load_captures(&conn, "s1").unwrap();
         let labels: Vec<_> = rows.iter().filter_map(|r| r.label.clone()).collect();
         assert_eq!(labels, ["leaf_001", "leaf_002", "leaf_003"]);
+        let stem = |id: &str| id.rsplit_once('-').unwrap().0.to_string();
+        assert!(rows.iter().all(|r| r.id.starts_with("burst-") && stem(&r.id) == stem(&rows[0].id)));
         assert!(rows.iter().all(|r| r.tag == "T1" && r.file_path.is_some()));
         assert_eq!(sink.0.lock().unwrap().iter().filter(|e| *e == "burst-progress").count(), 3);
 
