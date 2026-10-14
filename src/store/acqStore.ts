@@ -57,6 +57,14 @@ interface AcqStore {
   toggleCal: (which: 'dark' | 'reference') => Promise<void>;
 }
 
+/** Show only these captures on the plot (the new capture, or a burst's shots).
+ *  More can be picked in the Captures panel. */
+function showOnPlot(ids: string[]) {
+  const ses = useSessionStore.getState();
+  ses.clearSelected();
+  ids.forEach(ses.toggleSelected);
+}
+
 export const useAcqStore = create<AcqStore>()(
   immer((set, get) => ({
     params: {
@@ -100,6 +108,8 @@ export const useAcqStore = create<AcqStore>()(
     setPaused: (v) => {
       if (!v && !get().deviceMeta) return;
       set((s) => { s.paused = v; });   // optimistic; the refresh below corrects it
+      // Freezing starts a clean plot: the next capture is what shows on it.
+      if (v) useSessionStore.getState().clearSelected();
       (v ? ipc.stopLive() : ipc.startLive())
         .catch(e => useUIStore.getState().pushToast(String(e), 'error'))
         .finally(() => get().refreshInstrument());
@@ -146,6 +156,8 @@ export const useAcqStore = create<AcqStore>()(
           id, sessionId, label, timestamp: r.timestamp, tag, params: r.params,
           xs: r.spectrum.xs, ys: r.spectrum.ys, color,
         });
+        // Live off hides the live trace, so the capture is overlaid to be seen.
+        showOnPlot([id]);
         if (r.fileError) useUIStore.getState().pushToast(`"${label}" is in the database, but its .jdx file was not written: ${r.fileError}`, 'error');
         else if (r.file) useUIStore.getState().pushToast(`Saved ${r.file.split(/[\\/]/).pop()}`, 'success');
       } catch (e) {
@@ -168,6 +180,7 @@ export const useAcqStore = create<AcqStore>()(
       try {
         const r = await ipc.burst({ count, intervalMs, label: label.trim(), tag }, get().params);
         if (r.spectrum) set((s) => { s.liveSpectrum = r.spectrum; });
+        showOnPlot(r.ids);
         // The shots reach the Captures panel through capture-saved.
         useUIStore.getState().pushToast(r.stopped ? `Burst stopped: ${r.taken} of ${r.total} saved.`
           : `Burst done: ${r.taken} captures saved.`, r.stopped ? 'info' : 'success');

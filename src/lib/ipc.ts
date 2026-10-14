@@ -233,11 +233,11 @@ export const ipc = {
   /** `count` captures `intervalMs` apart (start to start), each filed like a
    *  single capture and named `label`_001… (spectra_NNN when empty). stopLive ends it early. */
   burst: (args: { count: number; intervalMs: number; label: string; tag: string }, params: AcqParams): Promise<{
-    taken: number; total: number; stopped: boolean; spectrum: Spectrum | null;
+    taken: number; total: number; stopped: boolean; spectrum: Spectrum | null; ids: string[];
   }> => IS_TAURI
-    ? deviceApi.invoke<{ taken: number; total: number; stopped: boolean; frame: CaptureResultDTO['frame'] | null }>('burst',
+    ? deviceApi.invoke<{ taken: number; total: number; stopped: boolean; ids: string[]; frame: CaptureResultDTO['frame'] | null }>('burst',
         { count: args.count, interval_ms: args.intervalMs, label: args.label, tag: args.tag })
-        .then(r => ({ taken: r.taken, total: r.total, stopped: r.stopped,
+        .then(r => ({ taken: r.taken, total: r.total, stopped: r.stopped, ids: r.ids,
           spectrum: r.frame ? frameToSpectrum(r.frame, params) : null }))
     : noBackend('Burst capture'),
 
