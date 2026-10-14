@@ -422,8 +422,8 @@ pub const BURST_MAX: u64 = 1000;
 pub const BURST_INTERVAL_MAX_MS: u64 = 3_600_000;
 
 /// `count` captures, each started `interval_ms` after the last one started
-/// (0 = back to back), each saved like a single capture. `label` names them
-/// label_001, label_002, ...; without one they are spectra_NNN. `stop_live`
+/// (0 = back to back), each saved like a single capture, so `label` numbers
+/// them label_001, label_002, ... after any already there; without one they are spectra_NNN. `stop_live`
 /// (or anything else that stops acquisition) ends it; the shots taken stay.
 ///
 /// args: count, interval_ms, label, tag.
@@ -437,7 +437,6 @@ fn burst(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Val
     if lock(&state.settings)?.workspace.is_none() {
         return Err(ApiError::new(4020, "PRECONDITION_FAILED", "open a workspace first: burst shots are saved there"));
     }
-    let label = args.get("label").and_then(Value::as_str).map(str::trim).filter(|l| !l.is_empty());
     state.stop_acquisition();
     let generation = state.acq_generation.load(Ordering::SeqCst);
     let stopped = || state.acq_generation.load(Ordering::SeqCst) != generation;
@@ -448,7 +447,6 @@ fn burst(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Val
     for i in 1..=count {
         let started = std::time::Instant::now();
         let mut shot = args.clone();
-        shot["label"] = label.map_or(Value::Null, |l| json!(format!("{l}_{i:03}")));
         // One burst, one id stem: the Captures panel groups its shots by it.
         shot["id"] = json!(format!("burst-{burst_id}-{i:03}"));
         let out = shoot(state, events, &shot)?;
@@ -493,11 +491,10 @@ fn shoot(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Val
 fn save_capture(state: &AppState, session_id: &str, frame: &SpectrumFrame, raw: &[f32], params: &AcqParams, args: &Value) -> Result<Value, String> {
     let conn = db::open(&state.db_path).map_err(|e| e.to_string())?;
     let s = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
-    // The user's name if they gave one, else spectra_001, spectra_002, ... per workspace.
-    let label = match s("label").map(|l| l.trim().to_string()).filter(|l| !l.is_empty()) {
-        Some(l) => l,
-        None => format!("spectra_{:03}", db::next_spectrum_number(&conn, session_id).map_err(|e| e.to_string())?),
-    };
+    // Numbered per workspace, so a name kept for several captures never repeats:
+    // Leaf A_001, Leaf A_002, ... or spectra_001, spectra_002, ... without one.
+    let stem = s("label").map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).unwrap_or_else(|| "spectra".into());
+    let label = format!("{stem}_{:03}", db::next_label_number(&conn, session_id, &stem).map_err(|e| e.to_string())?);
     let mut row = db::CaptureRow {
         id: s("id").unwrap_or_else(|| format!("cap-{}", now_ms())),
         session_id: session_id.to_string(),
@@ -726,7 +723,9 @@ mod tests {
         let file = out["saved"]["file"].as_str().unwrap();
         assert_eq!(out["saved"]["label"], "spectra_001");
         let named = call(Caller::Script, json!({"method":"invoke","params":{"command":"capture","args":{"label":"Leaf A"}}})).unwrap();
-        assert_eq!(named["saved"]["label"], "Leaf A");
+        assert_eq!(named["saved"]["label"], "Leaf A_001");
+        let again = call(Caller::Script, json!({"method":"invoke","params":{"command":"capture","args":{"label":"Leaf A"}}})).unwrap();
+        assert_eq!(again["saved"]["label"], "Leaf A_002");
         let next = call(Caller::Script, json!({"method":"invoke","params":{"command":"capture"}})).unwrap();
         assert_eq!(next["saved"]["label"], "spectra_002");
         let peak = out["frame"]["peak"].as_f64().unwrap();
@@ -735,7 +734,7 @@ mod tests {
         // Absorbance with a dark and a reference: processed, raw, dark, reference in one compound file.
         let jdx = std::fs::read_to_string(file).unwrap();
         assert!(jdx.contains("##DATA TYPE=LINK\n##BLOCKS=4\n") && jdx.contains("##TITLE=reference\n##BLOCK_ID=4\n"));
-        assert_eq!(db::count_captures(&conn, "s1").unwrap(), 3);
+        assert_eq!(db::count_captures(&conn, "s1").unwrap(), 4);
         assert!(sink.0.lock().unwrap().iter().any(|e| e == "capture-progress"));
         assert!(sink.0.lock().unwrap().iter().any(|e| e == "capture-saved"));
 
@@ -891,6 +890,9 @@ mod tests {
         assert!(rows.iter().all(|r| r.id.starts_with("burst-") && stem(&r.id) == stem(&rows[0].id)));
         assert!(rows.iter().all(|r| r.tag == "T1" && r.file_path.is_some()));
         assert_eq!(sink.0.lock().unwrap().iter().filter(|e| *e == "burst-progress").count(), 3);
+        // A second burst with the same name carries on the numbering.
+        burst(json!({"count":1, "label":"leaf"})).unwrap();
+        assert_eq!(db::load_captures(&conn, "s1").unwrap().last().unwrap().label.as_deref(), Some("leaf_004"));
 
         // A long interval, stopped after the first shot: one taken, unnamed ones are spectra_NNN.
         std::thread::scope(|s| {

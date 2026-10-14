@@ -154,8 +154,8 @@ export const useAcqStore = create<AcqStore>()(
           useUIStore.getState().pushToast('Captured, but no workspace is active, so it was not saved.', 'error');
           return;
         }
-        // One custom name per capture: the next one is automatic again unless renamed.
-        set((s) => { s.captureName = ''; });
+        // The name stays for the next capture (the backend numbers it); the tag is per capture.
+        set((s) => { s.sampleTag = ''; });
         const label = r.label;
         useSessionStore.getState().addSavedCapture({
           id, sessionId, label, timestamp: r.timestamp, tag, params: r.params,
