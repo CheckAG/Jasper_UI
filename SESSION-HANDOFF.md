@@ -6,73 +6,78 @@ status: https://claude.ai/artifact/DhQJxj99bYngZ8g4FPYtZq. This file says what h
 
 ## Now
 
-**F6 is merged to `master`** (PR #40, `017d6ef`, 2026-10-14). Nothing is in flight. Start the next work on a
-new branch from `master` (`/new-branch`). Candidates, ask the user which: F5's Stage-2 MCP tools
-(`jasper_capture` etc., PRD MHS-05), the remaining Stage-1 rows (S1-08 axis lock, S1-13 two plot panes,
-NFR-03 performance measurement, FIO-01 data-folder setting), or the Windows build (#14). When a requirement
-changes status, update its row in the PRD tracker.
+**`UI_improvements` is finished** (user, 2026-10-14) and waiting to merge into `master`. The PR text is
+drafted (compare link: https://github.com/CheckAG/Jasper_UI/compare/master...UI_improvements). Open
+decisions for the user: open the PR themselves, or merge locally and push `master`; and whether to
+rewrite the branch to strip the old `Co-Authored-By` trailers (needs a force-push). Other candidates after this branch: F5 Stage-2 MCP tools (PRD MHS-05), S1-08 axis
+lock, S1-13 two plot panes, NFR-03, FIO-01, Windows build (#14).
 
 ## State
 
-**Phase F F1–F4 and F6 done; F5 done except Stage-2 MCP tools.** Phase E stays at 9 of 12
-(`feature_list.json` has no Phase F entries). PRD tracker rows S1-02, S1-06, S1-15, S1-16 set to done this
-session; NFR-04 stays partial (a cable pull during a capture is untested).
+**Phase F F1–F4 and F6 done (F6 merged as PR #40); F5 done except Stage-2 MCP tools.** Phase E stays
+at 9 of 12. `feature_list.json` has no entries for Phase F or the UI work, so no status changed.
 
-**Built 2026-10-13/14 on `feature/f6-stage1-gaps`, all verified on the board by the user:**
-- `e613489` auto-reconnect: `AppState.wanted` holds the board's serial (set by connect, cleared by
-  disconnect). A watcher thread in `src-tauri/src/lib.rs` calls `watch_tick` (`src-tauri/src/api/mod.rs:550`)
-  every second: port gone or driver dropped marks it lost (`device.state` = `reconnecting`, `device-state`
-  event); `find_serial` (`src-tauri/src/instrument/mod.rs:37`) probes every port for that serial, reconnects,
-  resumes Live if it ran. Dark/reference/settings kept. UI: red pill, toasts, "Stop waiting" in Instruments.
-- `b8e4034` burst: `invoke burst {count 1–1000, interval_ms 0–3 600 000, label, tag}` (`mod.rs:430`); each
-  shot is `shoot()` (`mod.rs:467`), the same path as `capture`, saved as `label_001…` or `spectra_NNN`.
-  Needs a workspace. Stopped by anything that bumps `acq_generation` (`stop_live`, start_live, connect).
-  Event `burst-progress`. UI: toolbar **Burst…** and Acquire menu, `BurstDialog`
-  (`src/components/overlays/InstrumentDialogs.tsx:443`); `9ed053f` adds a fill + `.shot-flash` ring per shot.
-- `7cc400c` plot behaviour: after a capture the plot shows only that capture; after a burst, all its shots
-  (`showOnPlot`, `src/store/acqStore.ts:65`). Freezing Live clears the selection, so the plot is empty.
-- `8338417` the left controls card stretches to the full column height (`toolbox.css`).
-- `d87cb1b` settings: integration/averaging saved to `settings.json` on every write and loaded at start
-  (`Settings::load`, `mod.rs:45`). Profiles (integration, averaging, burst fields) in `profiles.json`,
-  Acquire ▸ Settings profiles… (`ProfilesDialog`, `InstrumentDialogs.tsx:490`). Burst fields live in
-  `acqStore.burstSettings` so profiles can carry them.
-- `5d8130b` recent: `recent.json` holds last-opened time per workspace and the last 10 exports
-  (`src/store/recentStore.ts`). Start reopens the last workspace; switcher sorted by last opened; File menu
-  lists 5 recent workspaces and 5 recent exports (click = `cmd_reveal`, opens the folder).
-- All three JSON files are in the app data folder (`~/.local/share/com.checkag.jasper/` on Linux), read and
-  written by `cmd_load_store` / `cmd_save_store` (`src-tauri/src/commands/storage.rs:25`), whitelist
-  `profiles`, `recent`. `settings.json` is written by the API itself.
+**Built 2026-10-14 on `UI_improvements`, all verified on the board by the user:**
+- `e65ce9e` Captures panel redesign (design canvas: https://claude.ai/artifact/9ip4iiLEsR7rnephnmZFKG,
+  option "A cards + B grouping"): spectrum cards with a sparkline, search, "N on the plot · Clear", burst
+  shots folded into one group with Show all / Hide all. No eye button (user removed it). Grouping in
+  `burstKeys` (`src/workspaces/acquire/CaptureContextPanel.tsx:14`): new ids `burst-<startms>-<NNN>`
+  share a stem; old `cap-<ms>-<n>` ids are grouped by consecutive n. Keys come from the full list, so a
+  search cannot split a group. The backend now gives every shot of one burst the same stem.
+- `17f37b8` the toolbar's Export… button removed; the Captures panel's Export stays (both opened the
+  same dialog).
+- `862584f` capture name stays after a capture; only the Tag clears (`src/store/acqStore.ts:158`). Every
+  name is numbered per workspace by `next_label_number` (`src-tauri/src/storage/db.rs:184`), called
+  in `save_capture` (`src-tauri/src/api/mod.rs:491`): `Leaf A_001`, `Leaf A_002`, else `spectra_NNN`.
+  A burst passes its base name and gets the same numbering, so a second `leaf` burst continues at
+  `leaf_004`. **Behaviour change for scripts:** `label: "Leaf A"` now saves `Leaf A_001`.
+- `83dd68b` fonts: Geist + Geist Mono (400/500/600) bundled via `@fontsource` in `src/main.tsx`; the
+  Google Fonts link and Instrument Serif are gone. Global `button, input, select, textarea
+  { font: inherit; }` in `tokens.css`, so per-component `fontFamily: var(--font-sans)` was removed.
+  Every font size is a token: `--text-xs/sm/md/base/lg/xl/display` = 10/11/12/13/16/20/40 px
+  × `--text-scale`. The canvas reads font names and scale from the tokens (a canvas cannot parse `var()`).
+- `7c35739` density: Lab / Standard / Comfort set `--text-scale` 0.85/1/1.15, `--row-h` 28/32/40,
+  `--row-h-sm` 24/28/34, `--pad` 10/14/20, `--gap` 6/10/16. Buttons, chips, menu bar and items, status
+  bar, Captures panel controls, plot zoom buttons, dialogs and panel padding use them. LiveSpectrum and
+  StaticChart redraw on a density change.
 
 **Half-built:**
+- Density does not reach: column widths (288/300 px, user declined widening), icon sizes, plot paddings
+  (`X_PAD` etc. in `src/spectrum/LiveSpectrum.tsx:62`), most dialog paddings, Analyze/Chemometrics controls.
 - F5: MCP server has only `jasper_read`. Audit log has no client name. Calibration writes not privileged
-  (no backend, #7); add them to `PRIVILEGED` when they exist.
-- A script-started firmware upgrade or burst shows no progress in the GUI (the GUI listens only while it
-  started them). Script captures are not auto-plotted.
-- Slow subscribers lose frames silently (`ponytail:` in `server.rs`). Live frames to scripts are paced by
-  the GUI's render gate.
-- While the board is lost, every serial port is probed each second (as Rescan does).
-- F2: no in-app data-folder setting. Export does not copy `.jdx` files. Dark and reference are in memory only.
+  (no backend, #7).
+- A script-started firmware upgrade or burst shows no progress in the GUI. Script captures are not
+  auto-plotted.
+- Slow subscribers lose frames silently (`ponytail:` in `server.rs`).
+- F2: no in-app data-folder setting. Export does not copy `.jdx` files. Dark and reference are memory only.
 - F4: x-cal still has its own Tauri command (`cmd_calibrate_xcal`, #7, #13).
 - `process()` still applies a dark taken at another integration; the banner warns only.
-- `eslint` does not run: `hermes-parser` fails with `Cannot find module './generated/ParserVisitorKeys'`.
+- The menu has no heading style: "Recent workspaces" / "Recent exports" are disabled items.
 
 **Untouched:** Analyze and Chemometrics (compiled, unreachable) and the Python sidecar.
 
 ## Uncommitted work
 
-This handoff and the F6 line in `docs/PLAN-migration.md`, on `master`.
+Clean.
 
 ## Learned this session
 
-- **`with_io` drops the driver's port on any I/O error**, so `is_connected()` turns false after a pull
-  during Live; while idle only the vanished port path shows it. `watch_tick` checks both.
-- **The simulator's pty never appears in `available_ports`/discovery**, so reconnect is tested by
-  injecting `find` into `watch_tick`. The kernel may reuse the same `/dev/pts/N` for a new simulator.
-- **Lock order:** never hold `driver` while taking `wanted` (`watch_tick` takes `wanted` then `driver`).
-- **The plot hides the live trace whenever Live is off**; only selected captures draw. That is why a new
-  capture looked missing until it was auto-selected.
-- **`AppState::new(data_dir, …)` now reads `settings.json`**: tests share nothing because each uses a tempdir.
-- **The menu has no heading style**: "Recent workspaces" / "Recent exports" are disabled items.
+- **Old shots in the database have `cap-<ms>-<n>` ids**, not `burst-…`; grouping that read only the new
+  format showed nothing on existing workspaces.
+- **The user assumed custom names were already numbered.** They were not (only bursts and `spectra_NNN`
+  were); keeping the name without numbering would have saved duplicates. Check the backend before
+  agreeing to a premise.
+- **`ctx.font = '13px var(--font-sans)'` is silently ignored** — the canvas falls back to 10px sans-serif.
+- **The old `--font-body`/`--font-small` density tokens were used by nothing**, so density looked inert.
+- **`(jasper): Gdk-CRITICAL … gdk_x11_window_get_xid` on every start is harmless**: the session is Wayland
+  and tao asks for an X11 id. `GDK_BACKEND=x11` silences it; the user chose to ignore it.
+- **`eslint` does not run:** `hermes-parser` fails with `Cannot find module './generated/ParserVisitorKeys'`
+  (install dated 2026-06, not from this session). `rm -rf node_modules && npm i` likely fixes it; not tried.
+
+- **No Claude trailers in commits or PRs, ever** (user, 2026-10-14): no `Co-Authored-By: Claude …`, no
+  `Claude-Session:`, no "Generated with Claude Code" footer, including PR text drafted for the user.
+  Removed from `.claude/skills/commit/SKILL.md:40`; `~/.claude/settings.json` sets
+  `"attribution": {"commit": "", "pr": ""}`. Commits before this date still carry the co-author line.
 
 ## Blocked / needs a human
 

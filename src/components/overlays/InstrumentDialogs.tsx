@@ -34,13 +34,13 @@ function CalibrationPanel({ connected }: { connected: boolean }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+      <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)', lineHeight: 1.5 }}>
         Fits the pixel → nm axis from a neon or argon lamp. Until it is fitted the x-axis is the
         pixel index. Dark and reference are taken from the toolbar.
       </span>
 
       {!connected && (
-        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+        <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)' }}>
           Connect an instrument to run a calibration.
         </span>
       )}
@@ -53,8 +53,8 @@ function CalibrationPanel({ connected }: { connected: boolean }) {
             boxShadow: statusOf(row.key) === 'ok' ? '0 0 0 4px rgba(31,157,85,0.14)' : 'none',
           }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{row.label}</div>
-            <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+            <div style={{ fontSize: 'var(--text-base)', fontWeight: 500 }}>{row.label}</div>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
               {row.sub}
               {rms[row.key] && <span className="mono" style={{ marginLeft: 8 }}>RMS {rms[row.key].toFixed(3)} nm</span>}
             </div>
@@ -75,10 +75,10 @@ function CalibrationPanel({ connected }: { connected: boolean }) {
 function Field({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-      <span className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
+      <span className="mono" style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase',
         letterSpacing: '0.08em', color: 'var(--muted)' }}>{label}</span>
       <span className={mono ? 'mono' : undefined}
-        style={{ fontSize: 13, color: 'var(--ink-2)', overflowWrap: 'anywhere' }}>{value}</span>
+        style={{ fontSize: 'var(--text-base)', color: 'var(--ink-2)', overflowWrap: 'anywhere' }}>{value}</span>
     </div>
   );
 }
@@ -96,13 +96,13 @@ export function InstrumentCard() {
     <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--radius-lg)', background: 'var(--paper)',
       padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span className="mono" style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.12em',
+        <span className="mono" style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.12em',
           color: 'var(--muted)' }}>Instrument</span>
         <LED status={meta ? 'ok' : 'pending'} size={7} />
       </div>
       {!meta ? (
         <>
-          <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+          <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)', lineHeight: 1.5 }}>
             No instrument connected. Connect one, or run tools/tcd1304-sim.py and enter the pty it prints.
           </span>
           <Button variant="primary" onClick={() => setDialog('instruments')}>Connect…</Button>
@@ -125,7 +125,7 @@ export function InstrumentCard() {
             <Field label="Last frame"  value={meta.lastCaptureMs ? `#${meta.lastSeq} · ${meta.lastCaptureMs} ms` : '—'} />
           </div>
           {meta.droppedFrames > 0 && (
-            <span style={{ fontSize: 12, color: 'var(--warn, var(--muted))' }}>
+            <span style={{ fontSize: 'var(--text-md)', color: 'var(--warn, var(--muted))' }}>
               {meta.droppedFrames} frame{meta.droppedFrames === 1 ? '' : 's'} arrived one
               integration period late (missed a USB write slot). The data is valid.
             </span>
@@ -158,7 +158,7 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Every serial port is probed with *IDN?.</span>
+        <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)' }}>Every serial port is probed with *IDN?.</span>
         <Button onClick={onRescan} disabled={busy}>{busy ? 'Scanning…' : 'Rescan'}</Button>
       </div>
 
@@ -168,7 +168,7 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
           border: '1px solid var(--line)', borderRadius: 10 }}>
           <LED status="fault" />
-          <span style={{ fontSize: 13, flex: 1 }}>Instrument lost. Waiting for it to be plugged back in…</span>
+          <span style={{ fontSize: 'var(--text-base)', flex: 1 }}>Instrument lost. Waiting for it to be plugged back in…</span>
           <Button onClick={onDisconnect} disabled={busy}>Stop waiting</Button>
         </div>
       )}
@@ -180,22 +180,22 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
           border: '1px solid var(--signal)', borderRadius: 10, background: 'var(--signal-soft)' }}>
           <LED status="ok" />
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>Connected — {connected.name}</span>
-            <small className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{connected.id}</small>
+            <span style={{ fontSize: 'var(--text-base)', fontWeight: 600 }}>Connected — {connected.name}</span>
+            <small className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{connected.id}</small>
           </div>
           <Button onClick={onDisconnect} disabled={busy}>Disconnect</Button>
         </div>
       )}
 
       {others.length === 0 ? (
-        <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+        <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)', lineHeight: 1.5 }}>
           {connected
             ? 'No other instrument found.'
             : 'No instrument found. Every serial port was probed and none answered as a supported spectrometer — check the cable, or enter a port below.'}
         </span>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
+          <span className="mono" style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase',
             letterSpacing: '0.08em', color: 'var(--muted)' }}>
             {connected ? 'Switch to' : 'Available'}
           </span>
@@ -205,8 +205,8 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
                   border: '1px dashed var(--accent-warn)', borderRadius: 10 }}>
                 <LED status="pending" />
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</span>
-                <small className="mono" style={{ color: 'var(--accent-warn)', fontSize: 11 }}>needs firmware</small>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 500 }}>{d.name}</span>
+                <small className="mono" style={{ color: 'var(--accent-warn)', fontSize: 'var(--text-sm)' }}>needs firmware</small>
               </div>
             ) : (
               <button key={d.id} disabled={busy} onClick={() => onConnect(d.id)}
@@ -214,11 +214,10 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
                   border: '1px solid var(--line)', borderRadius: 10, background: 'var(--paper)',
-                  cursor: busy ? 'progress' : 'pointer', fontFamily: 'var(--font-sans)',
-                }}>
+                  cursor: busy ? 'progress' : 'pointer', }}>
                 <LED status="idle" />
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</span>
-                <small className="mono" style={{ color: 'var(--muted)', fontSize: 11 }}>{d.id}</small>
+                <span style={{ fontSize: 'var(--text-base)', fontWeight: 500 }}>{d.name}</span>
+                <small className="mono" style={{ color: 'var(--muted)', fontSize: 'var(--text-sm)' }}>{d.id}</small>
               </button>
             ))}
           </div>
@@ -233,7 +232,7 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
           onChange={e => setManual(e.target.value)}
           placeholder="/dev/ttyACM0 or /dev/pts/N"
           className="mono"
-          style={{ flex: 1, minWidth: 0, padding: '7px 10px', fontSize: 12,
+          style={{ flex: 1, minWidth: 0, padding: '7px 10px', fontSize: 'var(--text-md)',
             border: '1px dashed var(--line-2)', borderRadius: 10,
             background: 'transparent', color: 'var(--ink-2)' }}
         />
@@ -241,7 +240,7 @@ function DeviceSelector({ devices, connectedId, busy, error, onConnect, onDiscon
       </form>
 
       {error && (
-        <span style={{ fontSize: 12, color: 'var(--danger, var(--muted))', lineHeight: 1.5 }}>{error}</span>
+        <span style={{ fontSize: 'var(--text-md)', color: 'var(--danger, var(--muted))', lineHeight: 1.5 }}>{error}</span>
       )}
     </div>
   );
@@ -288,42 +287,42 @@ function FirmwarePanel({ target, onDone }: { target: DeviceInfo | null; onDone: 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 13, fontWeight: 500 }}>{target ? target.name : 'No instrument'}</span>
+        <span style={{ fontSize: 'var(--text-base)', fontWeight: 500 }}>{target ? target.name : 'No instrument'}</span>
         {target && (
-          <span className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>
+          <span className="mono" style={{ fontSize: 'var(--text-md)', color: 'var(--muted)' }}>
             {target.status === 'bootloader' ? 'in bootloader' : `installed ${target.firmware}`}
           </span>
         )}
       </div>
       {!target ? (
-        <span style={{ fontSize: 12, color: 'var(--muted)' }}>Connect an instrument to update its firmware.</span>
+        <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)' }}>Connect an instrument to update its firmware.</span>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="file" accept=".srec,.s19,.mot" disabled={running}
               onChange={e => setFile(e.target.files?.[0] ?? null)}
-              style={{ flex: 1, minWidth: 0, fontSize: 12 }} />
+              style={{ flex: 1, minWidth: 0, fontSize: 'var(--text-md)' }} />
             <Button variant="primary" disabled={!file || running} onClick={install}>
               {running ? 'Updating…' : 'Install'}
             </Button>
           </div>
           {running ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: 12 }}>{STAGE_LABEL[progress.stage] ?? progress.stage}</span>
+              <span style={{ fontSize: 'var(--text-md)' }}>{STAGE_LABEL[progress.stage] ?? progress.stage}</span>
               <div style={{ height: 6, borderRadius: 3, background: 'var(--tint-2)', overflow: 'hidden' }}>
                 <div style={{ width: `${pct * 100}%`, height: '100%', background: 'var(--signal)' }} />
               </div>
-              <span style={{ fontSize: 12, color: 'var(--accent-warn)' }}>Keep the instrument plugged in.</span>
+              <span style={{ fontSize: 'var(--text-md)', color: 'var(--accent-warn)' }}>Keep the instrument plugged in.</span>
             </div>
           ) : (
-            <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+            <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)', lineHeight: 1.5 }}>
               Use the .srec file supplied by CheckAG. If an update is interrupted the instrument
               waits in its bootloader; run the update again to finish it.
             </span>
           )}
         </>
       )}
-      {error && <span style={{ fontSize: 12, color: 'var(--accent-alarm)', lineHeight: 1.5 }}>{error}</span>}
+      {error && <span style={{ fontSize: 'var(--text-md)', color: 'var(--accent-alarm)', lineHeight: 1.5 }}>{error}</span>}
     </div>
   );
 }
@@ -335,7 +334,7 @@ function DiagnosticsLog({ entries }: { entries: DiagEntry[] }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {entries.length === 0 && (
-        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+        <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)' }}>
           Nothing logged yet. Connects, device errors and dropped frames appear here.
         </span>
       )}
@@ -343,8 +342,8 @@ function DiagnosticsLog({ entries }: { entries: DiagEntry[] }) {
         {entries.slice(-50).reverse().map(e => (
           <div key={e.id} style={{ display: 'grid', gridTemplateColumns: '80px 40px 1fr',
             gap: 12, padding: '6px 0', borderBottom: '1px solid var(--line)',
-            fontSize: 12, color: 'var(--ink-2)' }}>
-            <span className="mono" style={{ color: 'var(--muted)', fontSize: 10 }}>
+            fontSize: 'var(--text-md)', color: 'var(--ink-2)' }}>
+            <span className="mono" style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>
               {new Date(e.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
             <span style={{ color: COLORS[e.severity] ?? 'var(--muted)', fontWeight: 500 }}>
@@ -430,7 +429,7 @@ function ShortcutsDialog({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Keyboard shortcuts" width={420} onClose={onClose}>
       {rows.map(([k, v]) => (
-        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
+        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 'var(--text-base)' }}>
           <span>{v}</span><span className="mono" style={{ color: 'var(--muted)' }}>{k}</span>
         </div>
       ))}
@@ -448,9 +447,9 @@ function BurstDialog({ onClose }: { onClose: () => void }) {
   const running = captureProgress !== null;
   const valid = Number.isInteger(count) && count >= 1 && count <= 1000 && seconds >= 0 && seconds <= 3600;
   const input = { height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)', borderRadius: 8,
-    background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none' };
+    background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-md)', outline: 'none' };
   const field = (name: string, el: React.ReactNode, hint?: string) => (
-    <label style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 10, fontSize: 13 }} title={hint}>
+    <label style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 10, fontSize: 'var(--text-base)' }} title={hint}>
       <span>{name}</span>{el}
     </label>
   );
@@ -474,9 +473,9 @@ function BurstDialog({ onClose }: { onClose: () => void }) {
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-end' }}>
-        {running && <span className="mono" style={{ fontSize: 12, color: 'var(--muted)', marginRight: 'auto' }}>
+        {running && <span className="mono" style={{ fontSize: 'var(--text-md)', color: 'var(--muted)', marginRight: 'auto' }}>
           Shot {captureProgress?.done ?? 0} of {captureProgress?.total ?? count}</span>}
-        {!paused && !running && <span style={{ fontSize: 12, color: 'var(--muted)', marginRight: 'auto' }}>Turn Live off first.</span>}
+        {!paused && !running && <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)', marginRight: 'auto' }}>Turn Live off first.</span>}
         {running
           ? <Button onClick={() => { ipc.stopLive().catch(() => {}); }}>Stop</Button>
           : <Button variant="primary" disabled={!valid || !paused} onClick={start}>Start</Button>}
@@ -514,12 +513,12 @@ function ProfilesDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title="Settings profiles" subtitle="Integration, averaging and burst settings" width={480} onClose={onClose}>
-      {profiles.length === 0 && <span style={{ fontSize: 13, color: 'var(--muted)' }}>No profiles yet.</span>}
+      {profiles.length === 0 && <span style={{ fontSize: 'var(--text-base)', color: 'var(--muted)' }}>No profiles yet.</span>}
       {profiles.map(p => (
         <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
-            <div className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{summary(p)}</div>
+            <div style={{ fontSize: 'var(--text-base)', fontWeight: 600 }}>{p.name}</div>
+            <div className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{summary(p)}</div>
           </div>
           <Button size="sm" onClick={() => load(p)}>Load</Button>
           <Button size="sm" variant="danger" onClick={() => store(profiles.filter(x => x !== p))}>Delete</Button>
@@ -529,7 +528,7 @@ function ProfilesDialog({ onClose }: { onClose: () => void }) {
         <input type="text" placeholder="Profile name" value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && name.trim()) save(); }}
           style={{ flex: 1, height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)', borderRadius: 8,
-            background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none' }} />
+            background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-md)', outline: 'none' }} />
         <Button variant="primary" disabled={!name.trim()} onClick={save}
           title={profiles.some(p => p.name === name.trim()) ? 'Replaces the profile with this name' : undefined}>
           Save current

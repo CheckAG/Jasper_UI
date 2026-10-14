@@ -77,8 +77,9 @@ export function LiveSpectrum({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 400 });
-  // The draw loop reads colour tokens once per mount; remount it on a theme switch.
+  // The draw loop reads tokens once per mount; remount it on a theme or density switch.
   const theme = useUIStore(s => s.theme);
+  const density = useUIStore(s => s.density);
 
   // Latest-value refs — the imperative rAF loop reads these so it never needs
   // to be torn down and rebuilt when props change (only on resize).
@@ -131,6 +132,10 @@ export function LiveSpectrum({
     const grid       = `rgba(${inkRgb},0.05)`;
     const gridStrong = `rgba(${inkRgb},0.10)`;
     const accentLive = tok('--signal', '#1f5dff');
+    // A canvas can't resolve var(), so read the family names here.
+    const sans       = tok('--font-sans', 'system-ui, sans-serif');
+    const mono       = tok('--font-mono', 'monospace');
+    const scale      = parseFloat(tok('--text-scale', '1')) || 1;
     const accentPrev = `rgba(${inkRgb},0.18)`;
 
     function fit() {
@@ -167,7 +172,7 @@ export function LiveSpectrum({
       if (!primary) {
         ctx.clearRect(0, 0, size.w, size.h);
         ctx.fillStyle = muted;
-        ctx.font = '13px var(--font-sans), system-ui, sans-serif';
+        ctx.font = `${13 * scale}px ${sans}`;
         ctx.textAlign = 'center';
         ctx.fillText(paused
           ? 'Live is off — select captures to view them.'
@@ -239,7 +244,7 @@ export function LiveSpectrum({
 
       // Grid
       ctx.lineWidth = 1;
-      ctx.font = '11px "Geist Mono", ui-monospace, monospace';
+      ctx.font = `${11 * scale}px ${mono}`;
       ctx.fillStyle = muted;
       const xStep = niceStep((xMax - xMin) / 8);
       const xTicks: number[] = [];
@@ -346,7 +351,7 @@ export function LiveSpectrum({
     fit();
     drawFrame();
     return () => cancelAnimationFrame(raf);
-  }, [size.w, size.h, theme]);
+  }, [size.w, size.h, theme, density]);
 
   /** Zoom around the centre of the current view. f < 1 zooms in. */
   function zoomBy(f: number) {
@@ -379,9 +384,9 @@ export function LiveSpectrum({
   }
 
   const zoomBtn: React.CSSProperties = {
-    width: 26, height: 26, padding: 0, border: '1px solid var(--line)', borderRadius: 6,
+    width: 'var(--row-h-sm)', height: 'var(--row-h-sm)', padding: 0, border: '1px solid var(--line)', borderRadius: 6,
     background: 'var(--paper)', color: 'var(--ink-2)', cursor: 'pointer',
-    fontFamily: 'var(--font-sans)', fontSize: 14, lineHeight: 1,
+    fontSize: 'var(--text-base)', lineHeight: 1,
   };
 
   return (
@@ -428,7 +433,7 @@ export function LiveSpectrum({
           display: 'flex', gap: 4 }}>
         <button style={zoomBtn} onClick={() => zoomBy(0.5)} title="Zoom in">+</button>
         <button style={zoomBtn} onClick={() => zoomBy(2)}   title="Zoom out">−</button>
-        <button style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 12 }}
+        <button style={{ ...zoomBtn, width: 'auto', padding: '0 8px', fontSize: 'var(--text-md)' }}
           onClick={() => { viewRef.current = null; }}
           title="Fit to screen (or double-click the plot). Drag to zoom a box; right-drag or Shift+drag to pan.">Fit</button>
       </div>

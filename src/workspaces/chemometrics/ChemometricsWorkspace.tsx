@@ -17,7 +17,7 @@ function TabBar() {
           padding: '7px 14px', border: '1px solid var(--line)', borderRadius: 9,
           background: activeTab === t ? 'var(--ink)' : 'var(--paper)',
           color: activeTab === t ? 'var(--paper)' : 'var(--ink-2)',
-          cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 13,
+          cursor: 'pointer', fontSize: 'var(--text-base)',
           textTransform: 'capitalize',
         }}>{t}</button>
       ))}
@@ -39,11 +39,11 @@ function ExploreTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ fontSize: 13, color: 'var(--muted)' }}>Components</span>
+        <span style={{ fontSize: 'var(--text-base)', color: 'var(--muted)' }}>Components</span>
         <input type="range" min={2} max={10} value={nComponents}
           onChange={e => setComponents(Number(e.target.value))}
           style={{ width: 120, accentColor: 'var(--signal)' }} />
-        <span className="mono" style={{ fontSize: 13 }}>{nComponents}</span>
+        <span className="mono" style={{ fontSize: 'var(--text-base)' }}>{nComponents}</span>
         <Button size="sm" variant="primary" onClick={handleRun} disabled={isRunning || captures.length < 2}>
           {isRunning ? 'Running…' : 'Run PCA'}
         </Button>
@@ -56,9 +56,9 @@ function ExploreTab() {
             {pcaResult.explainedVariance.slice(0, nComponents).map((v, i) => (
               <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 8,
                 padding: '6px 12px', background: 'var(--paper)' }}>
-                <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>PC{i + 1}</span>
-                <div style={{ fontSize: 18, fontWeight: 600, letterSpacing: '-0.02em' }}>
-                  {(v * 100).toFixed(0)}<small style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 2 }}>%</small>
+                <span className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>PC{i + 1}</span>
+                <div style={{ fontSize: 'var(--text-lg)', fontWeight: 600, letterSpacing: '-0.02em' }}>
+                  {(v * 100).toFixed(0)}<small style={{ fontSize: 'var(--text-md)', color: 'var(--muted)', marginLeft: 2 }}>%</small>
                 </div>
               </div>
             ))}
@@ -67,7 +67,7 @@ function ExploreTab() {
           {/* Scatter plot canvas */}
           <div style={{ border: '1px solid var(--line)', borderRadius: 14,
             background: 'var(--paper)', padding: 16, minHeight: 260, position: 'relative' }}>
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>PC1 × PC2 score plot</span>
+            <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)' }}>PC1 × PC2 score plot</span>
             <ScatterPlot scores={pcaResult.scores} labels={pcaResult.labels} />
           </div>
         </>
@@ -92,11 +92,11 @@ function RegressTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ fontSize: 13, color: 'var(--muted)' }}>Latent variables</span>
+        <span style={{ fontSize: 'var(--text-base)', color: 'var(--muted)' }}>Latent variables</span>
         <input type="range" min={1} max={10} value={nComponents}
           onChange={e => setComponents(Number(e.target.value))}
           style={{ width: 120, accentColor: 'var(--signal)' }} />
-        <span className="mono" style={{ fontSize: 13 }}>{nComponents}</span>
+        <span className="mono" style={{ fontSize: 'var(--text-base)' }}>{nComponents}</span>
         <Button size="sm" variant="primary" onClick={handleTrain} disabled={isTraining || captures.length < 3}>
           {isTraining ? 'Training…' : 'Train PLS'}
         </Button>
@@ -113,15 +113,15 @@ function RegressTab() {
             ].map(([k, v]) => (
               <div key={k} style={{ border: '1px solid var(--line)', borderRadius: 8,
                 padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span className="mono" style={{ fontSize: 10, color: 'var(--muted)',
+                <span className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)',
                   textTransform: 'uppercase', letterSpacing: '0.1em' }}>{k}</span>
-                <span style={{ fontSize: 20, letterSpacing: '-0.02em' }}>{v}</span>
+                <span style={{ fontSize: 'var(--text-xl)', letterSpacing: '-0.02em' }}>{v}</span>
               </div>
             ))}
           </div>
           <div style={{ border: '1px solid var(--line)', borderRadius: 12,
             background: 'var(--paper)', padding: 12, minHeight: 200, display: 'flex',
-            alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 12 }}>
+            alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 'var(--text-md)' }}>
             Predicted vs actual scatter (Phase C: real data)
           </div>
         </>
@@ -140,11 +140,11 @@ function PredictTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 13, color: 'var(--muted)' }}>Model</span>
+        <span style={{ fontSize: 'var(--text-base)', color: 'var(--muted)' }}>Model</span>
         <select value={activeModelId ?? ''} onChange={e => setActiveModel(e.target.value || null)}
           style={{ padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 8,
             background: 'var(--paper)', color: 'var(--ink)', fontFamily: 'var(--font-mono)',
-            fontSize: 12, cursor: 'pointer' }}>
+            fontSize: 'var(--text-md)', cursor: 'pointer' }}>
           <option value="">— select —</option>
           {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
@@ -159,24 +159,24 @@ function PredictTab() {
         <div style={{ border: '1px solid var(--line)', borderRadius: 14,
           background: 'var(--paper)', padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <span className="mono" style={{ fontSize: 10, color: 'var(--muted)',
+            <span className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)',
               textTransform: 'uppercase', letterSpacing: '0.1em' }}>Result</span>
-            <div style={{ fontSize: 40, fontWeight: 600, letterSpacing: '-0.02em', marginTop: 4 }}>
+            <div style={{ fontSize: 'var(--text-display)', fontWeight: 600, letterSpacing: '-0.02em', marginTop: 4 }}>
               {predictionResult.value.toFixed(1)}
-              <small style={{ fontSize: 18, color: 'var(--muted)', marginLeft: 4 }}>{predictionResult.unit}</small>
+              <small style={{ fontSize: 'var(--text-lg)', color: 'var(--muted)', marginLeft: 4 }}>{predictionResult.unit}</small>
             </div>
-            <div className="mono" style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+            <div className="mono" style={{ fontSize: 'var(--text-md)', color: 'var(--muted)', marginTop: 2 }}>
               95% CI: {predictionResult.ci95[0].toFixed(1)} – {predictionResult.ci95[1].toFixed(1)} {predictionResult.unit}
             </div>
           </div>
 
           <div>
-            <span style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, display: 'block' }}>
+            <span style={{ fontSize: 'var(--text-md)', fontWeight: 600, marginBottom: 8, display: 'block' }}>
               Top contributing bands
             </span>
             {predictionResult.topBands.map(b => (
               <div key={b.nm} style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--ink-2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-md)', color: 'var(--ink-2)' }}>
                   <span className="mono">{b.nm} nm</span>
                   <span>{(b.contribution * 100).toFixed(0)}%</span>
                 </div>
@@ -222,17 +222,17 @@ function MixtureTab() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {mixtureResult.components.map(c => (
               <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '14px 1fr auto',
-                gap: 10, alignItems: 'center', fontSize: 14, color: 'var(--ink-2)' }}>
+                gap: 10, alignItems: 'center', fontSize: 'var(--text-base)', color: 'var(--ink-2)' }}>
                 <div style={{ width: 12, height: 12, borderRadius: 3, background: c.color }} />
                 <span>{c.name}</span>
-                <span className="mono" style={{ fontSize: 13 }}>{(c.fraction * 100).toFixed(1)}%</span>
+                <span className="mono" style={{ fontSize: 'var(--text-base)' }}>{(c.fraction * 100).toFixed(1)}%</span>
               </div>
             ))}
             <div style={{ display: 'grid', gridTemplateColumns: '14px 1fr auto',
-              gap: 10, alignItems: 'center', fontSize: 14, color: 'var(--muted)' }}>
+              gap: 10, alignItems: 'center', fontSize: 'var(--text-base)', color: 'var(--muted)' }}>
               <div style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--line-2)' }} />
               <span>Residual</span>
-              <span className="mono" style={{ fontSize: 13 }}>{(mixtureResult.residual * 100).toFixed(1)}%</span>
+              <span className="mono" style={{ fontSize: 'var(--text-base)' }}>{(mixtureResult.residual * 100).toFixed(1)}%</span>
             </div>
           </div>
         </>
@@ -249,9 +249,9 @@ function ClassifyTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ border: '1px solid var(--line)', borderRadius: 12, background: 'var(--paper)',
         padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>Confusion matrix</span>
+        <span style={{ fontSize: 'var(--text-base)', fontWeight: 600 }}>Confusion matrix</span>
         {/* Placeholder matrix */}
-        <table style={{ borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+        <table style={{ borderCollapse: 'collapse', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-md)' }}>
           <thead>
             <tr>
               <th style={{ color: 'var(--muted)', fontWeight: 400, padding: '4px 8px' }}></th>
@@ -305,8 +305,8 @@ function ScatterPlot({ scores, labels }: { scores: number[][]; labels: string[] 
           <title>{labels[i]}</title>
         </circle>
       ))}
-      <text x={W / 2} y={H - 4} textAnchor="middle" fontSize={10} fill="#7a808a">PC1</text>
-      <text x={10} y={H / 2} textAnchor="middle" fontSize={10} fill="#7a808a"
+      <text x={W / 2} y={H - 4} textAnchor="middle" fontSize="var(--text-xs)" fill="#7a808a">PC1</text>
+      <text x={10} y={H / 2} textAnchor="middle" fontSize="var(--text-xs)" fill="#7a808a"
         transform={`rotate(-90, 10, ${H / 2})`}>PC2</text>
     </svg>
   );
@@ -317,7 +317,7 @@ function EmptyState({ message }: { message: string }) {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', gap: 8, color: 'var(--muted)', padding: 40 }}>
       <div style={{ width: 40, height: 40, border: '2px dashed var(--line-2)', borderRadius: 10 }} />
-      <span style={{ fontSize: 13 }}>{message}</span>
+      <span style={{ fontSize: 'var(--text-base)' }}>{message}</span>
     </div>
   );
 }
@@ -328,19 +328,19 @@ function ModelShelf() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <h5 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Models ({models.length})</h5>
+      <h5 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 600 }}>Models ({models.length})</h5>
       {models.map(m => (
         <button key={m.id} onClick={() => setActiveModel(m.id === activeModelId ? null : m.id)}
           style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px',
             border: `1px solid ${activeModelId === m.id ? 'var(--signal)' : 'var(--line)'}`,
             borderRadius: 10, background: 'var(--paper)', cursor: 'pointer', textAlign: 'left' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</span>
-            <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>v{m.version}</span>
+            <span style={{ fontSize: 'var(--text-base)', fontWeight: 500 }}>{m.name}</span>
+            <span className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>v{m.version}</span>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {Object.entries(m.metrics).map(([k, v]) => (
-              <span key={k} className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>
+              <span key={k} className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
                 {k.toUpperCase()} {typeof v === 'number' ? v.toFixed(2) : v}
               </span>
             ))}
@@ -367,9 +367,9 @@ export function ChemometricsWorkspace() {
       canvas={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
           <div>
-            <div className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
+            <div className="mono" style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase',
               letterSpacing: '0.14em', color: 'var(--muted)', marginBottom: 6 }}>Chemometrics</div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 600, letterSpacing: '-0.02em' }}>
               Models & Analysis
             </h2>
           </div>

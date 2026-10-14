@@ -37,11 +37,11 @@ function PipelineStrip() {
       {/* Raw anchor */}
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 12px',
         border: '1px solid var(--line)', borderRadius: 9, background: 'var(--tint)',
-        color: 'var(--ink-2)', fontSize: 13 }}>Raw</div>
+        color: 'var(--ink-2)', fontSize: 'var(--text-base)' }}>Raw</div>
 
       {pipeline.map((node) => (
         <div key={node.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ color: 'var(--muted)', fontSize: 12 }}>→</span>
+          <span style={{ color: 'var(--muted)', fontSize: 'var(--text-md)' }}>→</span>
           <button onClick={() => setSelectedNode(selectedNodeId === node.id ? null : node.id)}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -49,16 +49,16 @@ function PipelineStrip() {
               border: `1px solid ${selectedNodeId === node.id ? 'var(--signal)' : 'var(--line)'}`,
               boxShadow: selectedNodeId === node.id ? '0 0 0 3px var(--signal-soft)' : 'none',
               background: 'var(--paper)', cursor: 'pointer',
-              fontFamily: 'var(--font-sans)', fontSize: 13,
+              fontSize: 'var(--text-base)',
               color: 'var(--ink)',
               opacity: node.enabled ? 1 : 0.45,
             }}>
-            <span style={{ color: 'var(--signal)', fontSize: 11 }}>{node.enabled ? '●' : '○'}</span>
+            <span style={{ color: 'var(--signal)', fontSize: 'var(--text-sm)' }}>{node.enabled ? '●' : '○'}</span>
             <span style={{ textDecoration: node.enabled ? 'none' : 'line-through' }}>
               {node.name}
             </span>
             {node.kind === 'sg' && (
-              <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>
+              <span className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
                 {node.params.window}·{node.params.poly}
               </span>
             )}
@@ -67,13 +67,12 @@ function PipelineStrip() {
       ))}
 
       {/* Add node */}
-      <span style={{ color: 'var(--muted)', fontSize: 12 }}>→</span>
+      <span style={{ color: 'var(--muted)', fontSize: 'var(--text-md)' }}>→</span>
       <div style={{ position: 'relative' }}>
         <button onClick={() => setMenuOpen(o => !o)} style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 12px',
           border: '1px dashed var(--line-2)', borderRadius: 9, background: 'transparent',
-          cursor: 'pointer', color: 'var(--muted)', fontSize: 13, fontFamily: 'var(--font-sans)',
-        }}>+ add</button>
+          cursor: 'pointer', color: 'var(--muted)', fontSize: 'var(--text-base)', }}>+ add</button>
 
         {menuOpen && (
           <div onClick={() => setMenuOpen(false)} style={{
@@ -91,10 +90,10 @@ function PipelineStrip() {
               <button key={n.kind} onClick={() => { addNode(n.kind as NodeKind); setMenuOpen(false); }}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '8px 10px', border: 0, borderRadius: 8, background: 'transparent',
-                  cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 13,
+                  cursor: 'pointer', fontSize: 'var(--text-base)',
                   color: 'var(--ink-2)', textAlign: 'left' }}>
                 {n.name}
-                <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{n.code}</span>
+                <span className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>{n.code}</span>
               </button>
             ))}
           </div>
@@ -104,7 +103,7 @@ function PipelineStrip() {
       {/* Reload plugins + selected-node actions */}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
         {pluginMsg && (
-          <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>{pluginMsg}</span>
+          <span className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>{pluginMsg}</span>
         )}
         <Button size="sm" variant="ghost" onClick={reloadPlugins} title="Scan ~/jasper/plugins">
           ⟳ Plugins
@@ -128,28 +127,28 @@ function NodeInspector() {
   const { pipeline, selectedNodeId, setNode } = useAnalyzeStore();
   const node = pipeline.find(n => n.id === selectedNodeId);
   if (!node) return (
-    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Click a node to inspect its parameters</div>
+    <div style={{ fontSize: 'var(--text-md)', color: 'var(--muted)' }}>Click a node to inspect its parameters</div>
   );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 15, fontWeight: 600 }}>{node.name}</span>
-        <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{node.code}</span>
+        <span style={{ fontSize: 'var(--text-lg)', fontWeight: 600 }}>{node.name}</span>
+        <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{node.code}</span>
       </div>
       {Object.entries(node.params).map(([key, val]) => {
         const meta = PARAM_META[key] ?? { min: 0, max: 100, step: 1 };
         return (
           <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', fontSize: 'var(--text-base)' }}>
               <span style={{ textTransform: 'capitalize' }}>{key}</span>
-              <span className="mono" style={{ color: 'var(--muted)', fontSize: 12 }}>{val}</span>
+              <span className="mono" style={{ color: 'var(--muted)', fontSize: 'var(--text-md)' }}>{val}</span>
             </div>
             <input type="range" min={meta.min} max={meta.max} step={meta.step} value={val}
               onChange={e => setNode(node.id, { params: { ...node.params, [key]: Number(e.target.value) } })}
               style={{ width: '100%', accentColor: 'var(--signal)' }} />
             <div style={{ display: 'flex', justifyContent: 'space-between',
-              fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)' }}>
+              fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
               <span>{meta.min}</span><span>{meta.max}</span>
             </div>
           </div>
@@ -184,9 +183,9 @@ export function AnalyzeWorkspace() {
       canvas={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
           <div>
-            <div className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
+            <div className="mono" style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase',
               letterSpacing: '0.14em', color: 'var(--muted)', marginBottom: 6 }}>Analyze</div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 600, letterSpacing: '-0.02em' }}>
               Pre-processing Pipeline
             </h2>
           </div>
@@ -198,7 +197,7 @@ export function AnalyzeWorkspace() {
             {pipeline.length > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
-                <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
+                <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
                   {isExecuting ? '⏳ Computing…' : lastResult ? `Done in ${lastResult.durationMs}ms` : ''}
                 </span>
                 <Button size="sm" variant="ghost">Save as method</Button>
@@ -210,7 +209,7 @@ export function AnalyzeWorkspace() {
           {captures.length > 0 ? (
             <div style={{ border: '1px solid var(--line)', borderRadius: 14,
               background: 'var(--paper)', padding: 12 }}>
-              <div style={{ display: 'flex', gap: 16, marginBottom: 8, fontSize: 12 }}>
+              <div style={{ display: 'flex', gap: 16, marginBottom: 8, fontSize: 'var(--text-md)' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 24, height: 2, borderTop: '2px dashed var(--muted)', display: 'inline-block' }} />
                   Raw
@@ -228,8 +227,8 @@ export function AnalyzeWorkspace() {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
               justifyContent: 'center', gap: 8, color: 'var(--muted)', padding: 40 }}>
               <div style={{ width: 40, height: 40, border: '2px dashed var(--line-2)', borderRadius: 10 }} />
-              <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink-2)' }}>No captures yet</span>
-              <span style={{ fontSize: 13 }}>Go to Acquire and press Space to capture spectra</span>
+              <span style={{ fontSize: 'var(--text-lg)', fontWeight: 500, color: 'var(--ink-2)' }}>No captures yet</span>
+              <span style={{ fontSize: 'var(--text-base)' }}>Go to Acquire and press Space to capture spectra</span>
             </div>
           )}
 
@@ -237,14 +236,14 @@ export function AnalyzeWorkspace() {
           {pipeline.length > 0 && (
             <div style={{ border: '1px solid var(--line)', borderRadius: 12,
               background: 'var(--paper)', padding: '12px 14px' }}>
-              <h5 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600 }}>Pipeline audit</h5>
+              <h5 style={{ margin: '0 0 10px', fontSize: 'var(--text-base)', fontWeight: 600 }}>Pipeline audit</h5>
               {pipeline.map((n, i) => (
                 <div key={n.id} style={{ display: 'grid', gridTemplateColumns: '28px 1fr auto',
                   gap: 10, padding: '6px 0', borderBottom: '1px solid var(--line)',
-                  fontSize: 12, color: 'var(--ink-2)', opacity: n.enabled ? 1 : 0.45 }}>
+                  fontSize: 'var(--text-md)', color: 'var(--ink-2)', opacity: n.enabled ? 1 : 0.45 }}>
                   <span className="mono" style={{ color: 'var(--muted)' }}>{i + 1}</span>
                   <span>{n.name} {n.kind === 'sg' && `(w=${n.params.window}, p=${n.params.poly})`}</span>
-                  <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>
+                  <span className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
                     {n.enabled ? 'on' : 'off'}
                   </span>
                 </div>

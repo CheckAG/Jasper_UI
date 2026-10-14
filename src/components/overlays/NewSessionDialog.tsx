@@ -42,8 +42,8 @@ export function NewSessionDialog() {
         overflow: 'hidden',
       }}>
         <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)' }}>
-          <h4 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em' }}>New Workspace</h4>
-          <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
+          <h4 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, letterSpacing: '-0.01em' }}>New Workspace</h4>
+          <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
             Spectra you capture are filed in it
           </span>
         </div>
@@ -53,28 +53,28 @@ export function NewSessionDialog() {
             { label: 'Workspace name', content: (
               <input autoFocus value={name} onChange={e => setName(e.target.value)}
                 placeholder="e.g. Maize Leaf — Run 5"
-                style={{ height: 36, padding: '0 10px', width: '100%',
+                style={{ height: 'var(--row-h)', padding: '0 10px', width: '100%',
                   border: '1px solid var(--line)', borderRadius: 8,
                   background: 'var(--paper)', color: 'var(--ink)',
-                  fontFamily: 'var(--font-sans)', fontSize: 13, outline: 'none',
+                  fontSize: 'var(--text-base)', outline: 'none',
                   boxSizing: 'border-box' }} />
             )},
             { label: 'Instrument', content: (
               <select value={device} onChange={e => setDevice(e.target.value)}
-                style={{ height: 36, padding: '0 10px', width: '100%',
+                style={{ height: 'var(--row-h)', padding: '0 10px', width: '100%',
                   border: '1px solid var(--line)', borderRadius: 8,
                   background: 'var(--paper)', color: 'var(--ink)',
-                  fontFamily: 'var(--font-sans)', fontSize: 13, cursor: 'pointer',
+                  fontSize: 'var(--text-base)', cursor: 'pointer',
                   boxSizing: 'border-box' }}>
                 {devices.map(d => <option key={d.id} value={d.id}>{d.name} — {d.model}</option>)}
               </select>
             )},
             { label: 'Method', content: (
               <select value={method} onChange={e => setMethod(e.target.value)}
-                style={{ height: 36, padding: '0 10px', width: '100%',
+                style={{ height: 'var(--row-h)', padding: '0 10px', width: '100%',
                   border: '1px solid var(--line)', borderRadius: 8,
                   background: 'var(--paper)', color: 'var(--ink)',
-                  fontFamily: 'var(--font-sans)', fontSize: 13, cursor: 'pointer',
+                  fontSize: 'var(--text-base)', cursor: 'pointer',
                   boxSizing: 'border-box' }}>
                 {['NIR-Std', 'NIR-Hi-Res', 'Soil-Cal', 'Blank'].map(m =>
                   <option key={m} value={m}>{m}</option>
@@ -84,15 +84,15 @@ export function NewSessionDialog() {
             { label: 'Operator (optional)', content: (
               <input value={operator} onChange={e => setOperator(e.target.value)}
                 placeholder="who is running this workspace"
-                style={{ height: 36, padding: '0 10px', width: '100%',
+                style={{ height: 'var(--row-h)', padding: '0 10px', width: '100%',
                   border: '1px solid var(--line)', borderRadius: 8,
                   background: 'var(--paper)', color: 'var(--ink)',
-                  fontFamily: 'var(--font-sans)', fontSize: 13, outline: 'none',
+                  fontSize: 'var(--text-base)', outline: 'none',
                   boxSizing: 'border-box' }} />
             )},
           ].map(field => (
             <div key={field.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
+              <label className="mono" style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase',
                 letterSpacing: '0.1em', color: 'var(--muted)' }}>{field.label}</label>
               {field.content}
             </div>

@@ -28,10 +28,10 @@ export function ModeStrip() {
   }
 
   const chipBtn = (active: boolean): React.CSSProperties => ({
-    padding: '6px 12px', border: `1px solid ${active ? 'var(--signal)' : 'var(--line)'}`,
+    height: 'var(--row-h)', padding: '0 12px', border: `1px solid ${active ? 'var(--signal)' : 'var(--line)'}`,
     borderRadius: 8, background: active ? 'var(--signal-soft)' : 'var(--paper)',
     color: active ? 'var(--signal)' : 'var(--ink-2)', cursor: 'pointer',
-    fontFamily: 'var(--font-sans)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
+    fontSize: 'var(--text-base)', display: 'flex', alignItems: 'center', gap: 8,
   });
 
   /** Unset reads as a warning, not as a neutral option: without a dark and a
@@ -46,16 +46,16 @@ export function ModeStrip() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
       <button onClick={() => setPaused(!paused)} disabled={!deviceMeta} style={{
-        padding: '6px 12px', border: '1px solid var(--line)',
+        height: 'var(--row-h)', padding: '0 12px', border: '1px solid var(--line)',
         borderRadius: 8, background: paused ? 'var(--paper)' : 'var(--signal-soft)',
         color: paused ? 'var(--ink-2)' : 'var(--signal)',
         cursor: deviceMeta ? 'pointer' : 'not-allowed', opacity: deviceMeta ? 1 : 0.5,
-        fontFamily: 'var(--font-sans)', fontSize: 13,
+        fontSize: 'var(--text-base)',
         display: 'flex', alignItems: 'center', gap: 8,
       }} title={!deviceMeta ? 'Connect an instrument first'
         : paused ? 'Resume the live stream' : 'Freeze the live stream'}>
         {paused ? '⏸ Paused' : '● Live'}
-        <span className="mono" style={{ fontSize: 10, color: paused ? 'var(--muted)' : 'var(--signal)' }}>L</span>
+        <span className="mono" style={{ fontSize: 'var(--text-xs)', color: paused ? 'var(--muted)' : 'var(--signal)' }}>L</span>
       </button>
 
 

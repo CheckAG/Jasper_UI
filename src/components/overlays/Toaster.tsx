@@ -24,12 +24,12 @@ export function Toaster() {
             padding: '10px 12px', borderRadius: 10,
             border: `1px solid ${s.border}`, background: s.bg,
             boxShadow: '0 12px 32px -12px rgba(15,17,21,0.3)',
-            cursor: 'pointer', fontSize: 13, color: 'var(--ink)',
+            cursor: 'pointer', fontSize: 'var(--text-base)', color: 'var(--ink)',
             backdropFilter: 'blur(4px)',
           }}>
             <span style={{ color: s.fg, fontWeight: 600, flexShrink: 0 }}>{s.icon}</span>
             <span style={{ flex: 1, lineHeight: 1.4, color: s.fg }}>{t.message}</span>
-            <span style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1, flexShrink: 0 }}>×</span>
+            <span style={{ color: 'var(--muted)', fontSize: 'var(--text-base)', lineHeight: 1, flexShrink: 0 }}>×</span>
           </div>
         );
       })}

@@ -12,7 +12,7 @@ export function Toggle({ on, onChange, label, disabled }: ToggleProps) {
       disabled={disabled}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 8,
-        padding: '6px 10px', border: '1px solid var(--line)', borderRadius: 8,
+        height: 'var(--row-h-sm)', padding: '0 10px', border: '1px solid var(--line)', borderRadius: 8,
         background: 'var(--paper)', cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
       }}
@@ -30,7 +30,7 @@ export function Toggle({ on, onChange, label, disabled }: ToggleProps) {
         }} />
       </span>
       {label && (
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink)' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: 'var(--ink)' }}>
           {label}
         </span>
       )}

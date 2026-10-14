@@ -37,12 +37,7 @@ Usually omit it. Add a short body only when the *why* is not obvious from the de
 
 When the commit closes a tracked feature, reference its issue in the body: `Closes #42`.
 
-Every commit ends with these trailers, after a blank line:
-
-```
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-Claude-Session: <the current session URL>
-```
+No trailers: never add `Co-Authored-By: Claude …` or `Claude-Session:` lines.
 
 ## Steps
 
