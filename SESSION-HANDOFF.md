@@ -6,10 +6,10 @@ status: https://claude.ai/artifact/DhQJxj99bYngZ8g4FPYtZq. This file says what h
 
 ## Now
 
-Work is on **`UI_improvements`** (branch name chosen by the user, outside the `feature/…` convention),
-pushed and tracking `origin/UI_improvements`, 5 commits ahead of `master`, no PR yet. The user picks
-each UI change one at a time; ask what is next. When they say the branch is finished, they open the PR
-(the token cannot). Other candidates after this branch: F5 Stage-2 MCP tools (PRD MHS-05), S1-08 axis
+**`UI_improvements` is finished** (user, 2026-10-14) and waiting to merge into `master`. The PR text is
+drafted (compare link: https://github.com/CheckAG/Jasper_UI/compare/master...UI_improvements). Open
+decisions for the user: open the PR themselves, or merge locally and push `master`; and whether to
+rewrite the branch to strip the old `Co-Authored-By` trailers (needs a force-push). Other candidates after this branch: F5 Stage-2 MCP tools (PRD MHS-05), S1-08 axis
 lock, S1-13 two plot panes, NFR-03, FIO-01, Windows build (#14).
 
 ## State
@@ -58,7 +58,7 @@ at 9 of 12. `feature_list.json` has no entries for Phase F or the UI work, so no
 
 ## Uncommitted work
 
-This handoff only, on `UI_improvements`.
+Clean.
 
 ## Learned this session
 
@@ -73,6 +73,11 @@ This handoff only, on `UI_improvements`.
   and tao asks for an X11 id. `GDK_BACKEND=x11` silences it; the user chose to ignore it.
 - **`eslint` does not run:** `hermes-parser` fails with `Cannot find module './generated/ParserVisitorKeys'`
   (install dated 2026-06, not from this session). `rm -rf node_modules && npm i` likely fixes it; not tried.
+
+- **No Claude trailers in commits or PRs, ever** (user, 2026-10-14): no `Co-Authored-By: Claude …`, no
+  `Claude-Session:`, no "Generated with Claude Code" footer, including PR text drafted for the user.
+  Removed from `.claude/skills/commit/SKILL.md:40`; `~/.claude/settings.json` sets
+  `"attribution": {"commit": "", "pr": ""}`. Commits before this date still carry the co-author line.
 
 ## Blocked / needs a human
 
