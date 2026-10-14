@@ -136,3 +136,15 @@ body {
   border-radius: var(--radius-lg);
   padding: 16px;
 }
+
+/* One burst shot saved: a ring that swells out of the control and fades.
+   Re-keyed per shot so it replays. */
+@keyframes shot-flash {
+  from { box-shadow: 0 0 0 0 var(--signal); opacity: 1; }
+  to   { box-shadow: 0 0 0 8px var(--signal); opacity: 0; }
+}
+.shot-flash {
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  animation: shot-flash 450ms ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) { .shot-flash { animation: none; opacity: 0; } }

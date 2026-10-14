@@ -26,6 +26,8 @@ interface AcqStore {
   captureProgress: { done: number; total: number } | null;
   /** The dark or reference being taken or discarded right now. */
   calBusy: 'dark' | 'reference' | null;
+  /** A burst is running; `captureProgress` then counts shots, not scans. */
+  bursting: boolean;
 
   setParam: <K extends keyof AcqParams>(key: K, value: AcqParams[K]) => void;
   setCursor: (c: CursorState | null) => void;
@@ -79,6 +81,7 @@ export const useAcqStore = create<AcqStore>()(
     fps:          0,
     captureProgress: null,
     calBusy:      null,
+    bursting:     false,
     sampleTag:    '',
     captureName:  '',
     setCaptureName: (n) => set((s) => { s.captureName = n; }),
@@ -159,7 +162,7 @@ export const useAcqStore = create<AcqStore>()(
         useUIStore.getState().pushToast('Turn Live off before a burst.', 'info');
         return;
       }
-      set((s) => { s.captureProgress = { done: 0, total: count }; });
+      set((s) => { s.captureProgress = { done: 0, total: count }; s.bursting = true; });
       const stop = ipc.onBurstProgress((done, total) =>
         set((s) => { s.captureProgress = { done, total }; }));
       try {
@@ -172,7 +175,7 @@ export const useAcqStore = create<AcqStore>()(
         useUIStore.getState().pushToast(String(e), 'error');
       } finally {
         stop();
-        set((s) => { s.captureProgress = null; });
+        set((s) => { s.captureProgress = null; s.bursting = false; });
       }
     },
 

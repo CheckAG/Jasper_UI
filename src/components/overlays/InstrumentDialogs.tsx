@@ -467,6 +467,14 @@ function BurstDialog({ onClose }: { onClose: () => void }) {
         onChange={e => setLabel(e.target.value)} style={input} />, 'Shots are named name_001, name_002, …')}
       {field('Sample tag', <input type="text" value={tag} disabled={running}
         onChange={e => setTag(e.target.value)} style={input} />)}
+      {running && captureProgress && (
+        <div style={{ position: 'relative', height: 6, borderRadius: 3, background: 'var(--line)' }}>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: 3, background: 'var(--signal)',
+            transformOrigin: 'left', transform: `scaleX(${captureProgress.done / captureProgress.total})`,
+            transition: 'transform 200ms ease-out' }} />
+          {captureProgress.done > 0 && <span key={captureProgress.done} aria-hidden className="shot-flash" />}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-end' }}>
         {running && <span className="mono" style={{ fontSize: 12, color: 'var(--muted)', marginRight: 'auto' }}>
           Shot {captureProgress?.done ?? 0} of {captureProgress?.total ?? count}</span>}
