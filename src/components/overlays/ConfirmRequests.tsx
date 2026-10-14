@@ -22,10 +22,10 @@ export function ConfirmRequests() {
   };
   return (
     <Modal title="Approve this action?" subtitle={`requested by ${r.caller}`} onClose={() => answer(false)}>
-      <span style={{ fontSize: 13, lineHeight: 1.5 }}>
+      <span style={{ fontSize: 'var(--text-base)', lineHeight: 1.5 }}>
         A {r.caller} outside the app asks to {LABEL[r.command] ?? `run ${r.command}`}. It waits until you answer.
       </span>
-      <pre className="mono" style={{ margin: 0, fontSize: 11, color: 'var(--muted)', whiteSpace: 'pre-wrap' }}>
+      <pre className="mono" style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'pre-wrap' }}>
         {JSON.stringify(r.args, null, 2)}
       </pre>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

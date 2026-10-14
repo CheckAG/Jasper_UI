@@ -52,25 +52,24 @@ export function CommandPalette() {
           placeholder="Search workspaces and commands…"
           style={{ padding: '14px 18px', border: 0, outline: 0,
             background: 'transparent', color: 'var(--ink)',
-            fontFamily: 'var(--font-sans)', fontSize: 18,
+            fontSize: 'var(--text-lg)',
             borderBottom: '1px solid var(--line)' }}
         />
         <div style={{ maxHeight: '50vh', overflowY: 'auto', padding: 6 }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: 18, color: 'var(--muted)', textAlign: 'center', fontSize: 13 }}>
+            <div style={{ padding: 18, color: 'var(--muted)', textAlign: 'center', fontSize: 'var(--text-base)' }}>
               No results for "{query}"
             </div>
           ) : filtered.map((item, i) => (
             <button key={i} onClick={item.action} style={{
               display: 'grid', gridTemplateColumns: '100px 1fr auto', gap: 14, alignItems: 'center',
               padding: '8px 12px', borderRadius: 8, border: 0, background: 'transparent',
-              cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: 'var(--font-sans)',
-            }}>
-              <span style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              cursor: 'pointer', width: '100%', textAlign: 'left', }}>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 {item.group}
               </span>
-              <span style={{ fontSize: 14, color: 'var(--ink)' }}>{item.label}</span>
-              {item.meta && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{item.meta}</span>}
+              <span style={{ fontSize: 'var(--text-base)', color: 'var(--ink)' }}>{item.label}</span>
+              {item.meta && <span style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{item.meta}</span>}
             </button>
           ))}
         </div>

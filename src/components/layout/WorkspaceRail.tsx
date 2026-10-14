@@ -22,7 +22,7 @@ export function WorkspaceRail() {
       overflowY: 'auto', padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 2,
     }}>
       {/* Workspaces */}
-      <div className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
+      <div className="mono" style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase',
         letterSpacing: '0.12em', color: 'var(--muted)', padding: '12px 10px 6px' }}>
         Workspaces
       </div>
@@ -32,8 +32,8 @@ export function WorkspaceRail() {
           borderRadius: 8, border: 0,
           background: activeWs === ws.id ? 'var(--tint)' : 'transparent',
           color: activeWs === ws.id ? 'var(--ink)' : 'var(--ink-2)',
-          cursor: 'pointer', textAlign: 'left', fontSize: 13,
-          fontFamily: 'var(--font-sans)', width: '100%',
+          cursor: 'pointer', textAlign: 'left', fontSize: 'var(--text-base)',
+          width: '100%',
         }}>
           <span style={{
             width: 14, height: 14, borderRadius: 3, flexShrink: 0,
@@ -46,18 +46,18 @@ export function WorkspaceRail() {
       {/* Sessions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '12px 10px 6px' }}>
-        <span className="mono" style={{ fontSize: 10, textTransform: 'uppercase',
+        <span className="mono" style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase',
           letterSpacing: '0.12em', color: 'var(--muted)' }}>Sessions</span>
         <button onClick={() => setNewSessionOpen(true)} style={{
           width: 18, height: 18, border: '1px solid var(--line)', borderRadius: 6,
           background: 'var(--paper)', color: 'var(--ink-2)', cursor: 'pointer',
-          fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 'var(--text-base)', display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: 0,
         }}>+</button>
       </div>
 
       {sessions.length === 0 && (
-        <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 10px' }}>
+        <div style={{ fontSize: 'var(--text-md)', color: 'var(--muted)', padding: '8px 10px' }}>
           No sessions yet — click + to create one.
         </div>
       )}
@@ -72,7 +72,7 @@ export function WorkspaceRail() {
             borderRadius: 8,
             background: s.id === activeId ? 'var(--tint)' : 'transparent',
             color: s.id === activeId ? 'var(--ink)' : 'var(--ink-2)',
-            cursor: 'pointer', fontSize: 12, fontFamily: 'var(--font-sans)', width: '100%',
+            cursor: 'pointer', fontSize: 'var(--text-md)', width: '100%',
           }}>
           <span style={{
             width: 14, height: 14, borderRadius: 2, flexShrink: 0,
@@ -83,7 +83,7 @@ export function WorkspaceRail() {
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {s.name}
             </span>
-            <span className="mono" style={{ fontSize: 10, color: 'var(--muted)' }}>
+            <span className="mono" style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>
               {s.captureCount} captures{s.operator ? ` · ${s.operator}` : ''}
             </span>
           </span>
@@ -94,7 +94,7 @@ export function WorkspaceRail() {
               style={{
                 width: 18, height: 18, border: 0, borderRadius: 5,
                 background: 'transparent', color: 'var(--muted)', cursor: 'pointer',
-                fontSize: 14, lineHeight: 1, flexShrink: 0, padding: 0,
+                fontSize: 'var(--text-base)', lineHeight: 1, flexShrink: 0, padding: 0,
               }}
               onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-alarm)'; }}
               onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; }}

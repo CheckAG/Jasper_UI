@@ -19,21 +19,21 @@ export function StatusBar() {
     <footer style={{
       display: 'flex', alignItems: 'center', gap: 18, padding: '0 16px',
       borderTop: '1px solid var(--line)', background: 'var(--paper)',
-      fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)',
+      fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: 'var(--muted)',
       height: 32, flexShrink: 0,
     }}>
       {cursor ? (
         <>
           <span>
-            <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>x</span>
+            <span style={{ fontSize: 'var(--text-xs)', marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>x</span>
             <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{Math.round(cursor.x)} px</b>
           </span>
           <span>
-            <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>y</span>
+            <span style={{ fontSize: 'var(--text-xs)', marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>y</span>
             <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{cursor.y.toFixed(3)}</b>
           </span>
           <span>
-            <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>SNR</span>
+            <span style={{ fontSize: 'var(--text-xs)', marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>SNR</span>
             <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{cursor.snr}</b>
           </span>
         </>
@@ -42,14 +42,14 @@ export function StatusBar() {
       )}
       {!paused && fps > 0 && (
         <span>
-          <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>fps</span>
+          <span style={{ fontSize: 'var(--text-xs)', marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>fps</span>
           <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{fps.toFixed(1)}</b>
         </span>
       )}
       {peak !== undefined && (
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}
           title="Brightest pixel as a share of the detector's full scale">
-          <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Peak</span>
+          <span style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Peak</span>
           <span style={{ width: 60, height: 6, borderRadius: 3, background: 'var(--line)', overflow: 'hidden' }}>
             <span style={{ display: 'block', height: '100%', width: `${Math.min(100, peak * 100)}%`,
               background: peak >= SATURATION_WARN ? 'var(--accent-warn)' : 'var(--signal)' }} />
@@ -61,15 +61,15 @@ export function StatusBar() {
       <span style={{ marginLeft: 'auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
         title={folder ?? undefined}>{folder}</span>
       <span>
-        <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Integ</span>
+        <span style={{ fontSize: 'var(--text-xs)', marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Integ</span>
         <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{params.integration} ms</b>
       </span>
       <span>
-        <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Avg</span>
+        <span style={{ fontSize: 'var(--text-xs)', marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Avg</span>
         <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{params.averaging}</b>
       </span>
       <span>
-        <span style={{ fontSize: 10, marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Mode</span>
+        <span style={{ fontSize: 'var(--text-xs)', marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Mode</span>
         <b style={{ color: 'var(--ink)', fontWeight: 500 }}>{params.mode}</b>
       </span>
     </footer>

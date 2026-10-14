@@ -76,16 +76,16 @@ function Card({ cap, on, toggle, remove, compact }: {
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: cap.color }} />
-          <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <span style={{ fontSize: 'var(--text-md)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {cap.label}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 6, fontSize: 11, color: 'var(--muted)' }}>
+        <div style={{ display: 'flex', gap: 6, fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
           <span className="mono">{time(cap.timestamp)}</span>
           {!compact && <><span>·</span><span>{cap.params.mode}</span></>}
         </div>
         {cap.tag && !compact && (
-          <span className="mono" style={{ alignSelf: 'flex-start', marginTop: 2, fontSize: 10, padding: '1px 6px',
+          <span className="mono" style={{ alignSelf: 'flex-start', marginTop: 2, fontSize: 'var(--text-xs)', padding: '1px 6px',
             borderRadius: 4, background: 'var(--tint)', color: 'var(--ink-2)' }}>{cap.tag}</span>
         )}
       </div>
@@ -113,10 +113,10 @@ function BurstGroup({ caps, open, setOpen, selectedIds, toggle, remove }: {
             <path d={open ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6'} />
           </svg>
           <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <span style={{ fontSize: 'var(--text-md)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               Burst · {name}
             </span>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
               {caps.length} shots · {time(caps[0].timestamp, false)}–{time(caps[caps.length - 1].timestamp, false)}
               {shown > 0 && !allOn ? ` · ${shown} shown` : ''}
             </span>
@@ -128,7 +128,7 @@ function BurstGroup({ caps, open, setOpen, selectedIds, toggle, remove }: {
           </span>
         )}
         <button onClick={showAll} aria-label={`${allOn ? 'Hide' : 'Show'} all shots of ${name}`}
-          style={{ height: 26, padding: '0 9px', borderRadius: 7, fontFamily: 'inherit', fontSize: 11, cursor: 'pointer', flexShrink: 0,
+          style={{ height: 26, padding: '0 9px', borderRadius: 7, fontSize: 'var(--text-sm)', cursor: 'pointer', flexShrink: 0,
             border: allOn ? 0 : '1px solid var(--line)', background: allOn ? 'var(--signal)' : 'var(--paper)',
             color: allOn ? 'var(--paper)' : 'var(--ink-2)' }}>
           {allOn ? 'Hide all' : 'Show all'}
@@ -161,21 +161,21 @@ export function CaptureContextPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <h5 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Captures</h5>
-        <span className="mono" style={{ fontSize: 11, padding: '1px 7px', borderRadius: 999,
+        <h5 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 600 }}>Captures</h5>
+        <span className="mono" style={{ fontSize: 'var(--text-sm)', padding: '1px 7px', borderRadius: 999,
           background: 'var(--tint)', color: 'var(--ink-2)' }}>{captures.length}</span>
         <button onClick={() => setExportOpen(true)} disabled={captures.length === 0}
           title={captures.length ? 'Export this workspace\'s captures' : 'No captures to export'}
           style={{ marginLeft: 'auto', height: 28, padding: '0 10px', border: '1px solid var(--line)', borderRadius: 8,
-            background: 'var(--paper)', color: 'var(--ink-2)', fontFamily: 'var(--font-sans)', fontSize: 12,
+            background: 'var(--paper)', color: 'var(--ink-2)', fontSize: 'var(--text-md)',
             cursor: captures.length ? 'pointer' : 'not-allowed', opacity: captures.length ? 1 : 0.5 }}>
           Export
         </button>
       </div>
 
       {captures.length === 0 ? (
-        <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-          Press <kbd className="mono" style={{ fontSize: 11, padding: '1px 5px', borderRadius: 4,
+        <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)' }}>
+          Press <kbd className="mono" style={{ fontSize: 'var(--text-sm)', padding: '1px 5px', borderRadius: 4,
             border: '1px solid var(--line)', background: 'var(--tint)' }}>Space</kbd> to capture
         </span>
       ) : <>
@@ -187,20 +187,20 @@ export function CaptureContextPanel() {
           <input type="search" aria-label="Search captures" placeholder="Search name or tag" value={query}
             onChange={e => setQuery(e.target.value)}
             style={{ flex: 1, minWidth: 0, border: 0, outline: 'none', background: 'transparent',
-              fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--ink)' }} />
+              fontSize: 'var(--text-md)', color: 'var(--ink)' }} />
         </label>
 
         {shown > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px',
-            borderRadius: 8, background: 'var(--signal-soft)', color: 'var(--signal)', fontSize: 12 }}>
+            borderRadius: 8, background: 'var(--signal-soft)', color: 'var(--signal)', fontSize: 'var(--text-md)' }}>
             <span><b style={{ fontWeight: 600 }}>{shown}</b> on the plot</span>
             <button onClick={clearSelected} style={{ border: 0, background: 'transparent', color: 'var(--signal)',
-              fontFamily: 'inherit', fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>Clear</button>
+              fontSize: 'var(--text-md)', textDecoration: 'underline', cursor: 'pointer' }}>Clear</button>
           </div>
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {entries.length === 0 && <span style={{ fontSize: 12, color: 'var(--muted)' }}>Nothing matches "{query}".</span>}
+          {entries.length === 0 && <span style={{ fontSize: 'var(--text-md)', color: 'var(--muted)' }}>Nothing matches "{query}".</span>}
           {entries.map(e => e.kind === 'single'
             ? <Card key={e.cap.id} cap={e.cap} on={selectedIds.includes(e.cap.id)}
                 toggle={() => toggleSelected(e.cap.id)} remove={() => remove(e.cap)} />
@@ -209,7 +209,7 @@ export function CaptureContextPanel() {
                 selectedIds={selectedIds} toggle={toggleSelected} remove={remove} />)}
         </div>
 
-        <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
           Click to show on the plot · right-click to delete
         </span>
       </>}

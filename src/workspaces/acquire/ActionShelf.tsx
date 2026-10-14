@@ -31,7 +31,7 @@ export function ActionShelf() {
     display: 'flex', alignItems: 'center', gap: 10, height: 'var(--row-h)', minWidth: 0,
   };
   const labelStyle: React.CSSProperties = {
-    fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)',
+    fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)',
   };
 
   return (
@@ -59,8 +59,8 @@ export function ActionShelf() {
             className="mono"
             style={{ flex: 1, minWidth: 0, height: 'var(--row-h)', padding: '0 10px',
               border: '1px solid var(--line)', borderRadius: 8, background: 'var(--paper)',
-              color: 'var(--ink)', fontSize: 14, outline: 'none' }} />
-          <small className="mono" style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0 }}>ms</small>
+              color: 'var(--ink)', fontSize: 'var(--text-base)', outline: 'none' }} />
+          <small className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)', flexShrink: 0 }}>ms</small>
         </div>
       </div>
 
@@ -70,11 +70,11 @@ export function ActionShelf() {
         <div style={{ ...rowStyle, gap: 6 }}>
           <button onClick={() => writeSetting('averaging', Math.max(1, params.averaging - 1))}
             style={{ width: 28, height: 28, flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
-              background: 'var(--paper)', cursor: 'pointer', fontSize: 16 }}>−</button>
-          <span className="mono" style={{ flex: 1, textAlign: 'center', fontSize: 14 }}>{params.averaging}</span>
+              background: 'var(--paper)', cursor: 'pointer', fontSize: 'var(--text-lg)' }}>−</button>
+          <span className="mono" style={{ flex: 1, textAlign: 'center', fontSize: 'var(--text-base)' }}>{params.averaging}</span>
           <button onClick={() => writeSetting('averaging', Math.min(64, params.averaging + 1))}
             style={{ width: 28, height: 28, flexShrink: 0, border: '1px solid var(--line)', borderRadius: 8,
-              background: 'var(--paper)', cursor: 'pointer', fontSize: 16 }}>+</button>
+              background: 'var(--paper)', cursor: 'pointer', fontSize: 'var(--text-lg)' }}>+</button>
         </div>
       </div>
 
@@ -86,7 +86,7 @@ export function ActionShelf() {
           title="Name for the next capture and its .jdx file. Leave empty for spectra_001, spectra_002, …"
           style={{ height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)',
             borderRadius: 8, background: 'var(--paper)', color: 'var(--ink)',
-            fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none', minWidth: 0 }} />
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-md)', outline: 'none', minWidth: 0 }} />
       </div>
 
       {/* Sample tag */}
@@ -96,7 +96,7 @@ export function ActionShelf() {
           value={sampleTag} onChange={e => setSampleTag(e.target.value)}
           style={{ height: 'var(--row-h)', padding: '0 10px', border: '1px solid var(--line)',
             borderRadius: 8, background: 'var(--paper)', color: 'var(--ink)',
-            fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none', minWidth: 0 }} />
+            fontFamily: 'var(--font-mono)', fontSize: 'var(--text-md)', outline: 'none', minWidth: 0 }} />
       </div>
 
       {/* Capture CTA */}
@@ -113,7 +113,7 @@ export function ActionShelf() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           padding: '10px 14px', background: 'var(--ink)', color: 'var(--paper)',
           border: 0, borderRadius: 10, cursor: busyCapture ? 'progress' : 'pointer',
-          fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 600,
+          fontSize: 'var(--text-base)', fontWeight: 600,
           boxShadow: '0 6px 16px -8px rgba(15,17,21,0.4), inset 0 1px 0 rgba(255,255,255,0.08)',
         }}>
           {/* Progress fills the button itself: the thing you pressed is the
@@ -133,14 +133,14 @@ export function ActionShelf() {
               boxShadow: busyCapture ? 'none' : '0 0 0 3px rgba(255,106,106,0.22)',
               flexShrink: 0 }} />
             {busyCapture ? `Capturing ${progress?.done ?? 0}/${progress?.total ?? 0}` : 'Capture'}
-            <span className="mono" style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 6px',
+            <span className="mono" style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', padding: '2px 6px',
               borderRadius: 4, background: 'rgba(var(--paper-rgb),0.12)', color: 'rgba(var(--paper-rgb),0.8)' }}>
               Space
             </span>
           </span>
         </button>
         <div style={{ display: 'flex', justifyContent: 'space-between',
-          fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)',
+          fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--muted)',
           textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0 4px' }}>
           <span>{captures.length} captured</span>
           <span>{params.acqMode}</span>

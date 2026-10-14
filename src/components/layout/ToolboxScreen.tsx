@@ -21,11 +21,11 @@ function ConnectionChip() {
       display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', flexShrink: 0,
       border: `1px solid ${meta ? 'var(--line)' : 'var(--accent-alarm)'}`, borderRadius: 8,
       background: 'var(--paper)', color: meta ? 'var(--ink-2)' : 'var(--accent-alarm)',
-      cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: 13,
+      cursor: 'pointer', fontSize: 'var(--text-base)',
     }}>
       <LED status={meta ? 'ok' : 'pending'} size={7} />
       {meta
-        ? <span className="mono" style={{ fontSize: 12 }}>{meta.model}{meta.serial && ` · ${meta.serial.slice(-6)}`}</span>
+        ? <span className="mono" style={{ fontSize: 'var(--text-md)' }}>{meta.model}{meta.serial && ` · ${meta.serial.slice(-6)}`}</span>
         : 'Connect instrument'}
     </button>
   );
@@ -53,7 +53,7 @@ function PlotBanners() {
   return (
     <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {banners.map(b => (
-        <div key={b} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 13,
+        <div key={b} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 'var(--text-base)',
           border: '1px solid var(--accent-warn)', color: 'var(--accent-warn)', background: 'var(--paper)' }}>{b}</div>
       ))}
     </div>

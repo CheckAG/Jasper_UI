@@ -77,8 +77,8 @@ export function ExportDialog() {
       }}>
         <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)',
           display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <h4 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em' }}>Export</h4>
-          <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
+          <h4 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, letterSpacing: '-0.01em' }}>Export</h4>
+          <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
             Export spectra and metadata
           </span>
         </div>
@@ -91,13 +91,12 @@ export function ExportDialog() {
               borderRadius: 10,
               background: format === f.id ? 'var(--signal-soft)' : 'var(--bg)',
               color: 'var(--ink)', display: 'flex', flexDirection: 'column', gap: 6,
-              fontFamily: 'var(--font-sans)',
-            }}>
+              }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <span style={{ fontSize: 15, fontWeight: 600 }}>{f.name}</span>
-                <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{f.ext}</span>
+                <span style={{ fontSize: 'var(--text-lg)', fontWeight: 600 }}>{f.name}</span>
+                <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{f.ext}</span>
               </div>
-              <span style={{ fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.4 }}>{f.desc}</span>
+              <span style={{ fontSize: 'var(--text-md)', color: 'var(--ink-2)', lineHeight: 1.4 }}>{f.desc}</span>
             </button>
           ))}
         </div>
@@ -107,7 +106,7 @@ export function ExportDialog() {
             { label: `Selected captures only (${selectedIds.length})`, val: selected, set: setSelected },
           ].map(opt => (
             <label key={opt.label} style={{ display: 'flex', alignItems: 'center', gap: 8,
-              fontSize: 13, color: 'var(--ink-2)', cursor: 'pointer' }}>
+              fontSize: 'var(--text-base)', color: 'var(--ink-2)', cursor: 'pointer' }}>
               <input type="checkbox" checked={opt.val} onChange={e => opt.set(e.target.checked)}
                 style={{ accentColor: 'var(--signal)', width: 14, height: 14 }} />
               {opt.label}
@@ -116,7 +115,7 @@ export function ExportDialog() {
         </div>
 
         {folder && (
-          <span style={{ display: 'block', margin: '0 16px 12px', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+          <span style={{ display: 'block', margin: '0 16px 12px', fontSize: 'var(--text-md)', color: 'var(--muted)', lineHeight: 1.5 }}>
             Each capture is already saved as a JCAMP-DX file in{' '}
             <span className="mono" style={{ color: 'var(--ink-2)', wordBreak: 'break-all' }}>{folder}</span>
           </span>
@@ -124,7 +123,7 @@ export function ExportDialog() {
         {result && (
           <div style={{ margin: '0 16px 12px', padding: '8px 12px', borderRadius: 8,
             background: 'rgba(31,157,85,0.08)', border: '1px solid rgba(31,157,85,0.3)',
-            fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--accent-ok)',
+            fontSize: 'var(--text-md)', fontFamily: 'var(--font-mono)', color: 'var(--accent-ok)',
             wordBreak: 'break-all' }}>
             ✓ Exported to: {result}
           </div>
@@ -132,7 +131,7 @@ export function ExportDialog() {
         {error && (
           <div style={{ margin: '0 16px 12px', padding: '8px 12px', borderRadius: 8,
             background: 'rgba(192,50,45,0.08)', border: '1px solid rgba(192,50,45,0.3)',
-            fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--accent-alarm)' }}>
+            fontSize: 'var(--text-md)', fontFamily: 'var(--font-mono)', color: 'var(--accent-alarm)' }}>
             {error}
           </div>
         )}

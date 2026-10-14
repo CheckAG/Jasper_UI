@@ -31,7 +31,7 @@ function Dropdown({ anchor, onClose, children }: {
 const itemStyle = (enabled: boolean): React.CSSProperties => ({
   display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 24, width: '100%',
   padding: '7px 10px', border: 0, borderRadius: 6, background: 'transparent', textAlign: 'left',
-  fontFamily: 'var(--font-sans)', fontSize: 13, color: enabled ? 'var(--ink)' : 'var(--muted)',
+  fontSize: 'var(--text-base)', color: enabled ? 'var(--ink)' : 'var(--muted)',
   cursor: enabled ? 'pointer' : 'not-allowed',
 });
 const hover = {
@@ -67,18 +67,17 @@ function WorkspaceSwitcher() {
         title="Switch workspace" aria-haspopup="menu" style={{
           display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, maxWidth: 360, height: 32,
           padding: '0 10px 0 6px', border: '1px solid var(--line-2)', borderRadius: 8,
-          background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer', fontFamily: 'var(--font-sans)',
-        }}>
-        <span className="mono" style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: '0.1em',
+          background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer', }}>
+        <span className="mono" style={{ fontSize: 'var(--text-xs)', fontWeight: 600, letterSpacing: '0.1em',
           textTransform: 'uppercase', color: 'var(--signal)', background: 'var(--signal-soft)',
           padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}>Workspace</span>
-        <b style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <b style={{ fontSize: 'var(--text-base)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {current?.name ?? 'None'}
         </b>
-        <span className="mono" style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+        <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
           {captures.length} spectra
         </span>
-        <span aria-hidden style={{ color: 'var(--muted)', fontSize: 10 }}>▾</span>
+        <span aria-hidden style={{ color: 'var(--muted)', fontSize: 'var(--text-xs)' }}>▾</span>
       </button>
       {anchor && (
         <Dropdown anchor={anchor} onClose={close}>
@@ -89,7 +88,7 @@ function WorkspaceSwitcher() {
                 fontWeight: s.id === activeId ? 600 : 400 }}>
                 {s.id === activeId ? '✓ ' : ''}{s.name}
               </span>
-              <span className="mono" style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0 }}>
+              <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)', flexShrink: 0 }}>
                 {opened[s.id] && s.id !== activeId ? `${ago(opened[s.id])} · ` : ''}
                 {s.id === activeId ? captures.length : s.captureCount}
               </span>
@@ -121,7 +120,7 @@ export function MenuBar() {
       padding: '6px 16px', minHeight: 46, borderBottom: '1px solid var(--line)', background: 'var(--paper)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: '-0.01em' }}>JASPER</span>
+        <span style={{ fontWeight: 600, fontSize: 'var(--text-lg)', letterSpacing: '-0.01em' }}>JASPER</span>
         <img src="/checkag.png" alt="CheckAg" style={{ height: 16, width: 'auto', display: 'block' }} />
       </div>
 
@@ -137,7 +136,7 @@ export function MenuBar() {
               padding: '5px 10px', border: 0, borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
               background: open?.menu.name === m.name ? 'var(--tint)' : 'transparent',
               color: open?.menu.name === m.name ? 'var(--ink)' : 'var(--ink-2)',
-              fontFamily: 'var(--font-sans)', fontSize: 13,
+              fontSize: 'var(--text-base)',
             }}>{m.name}</button>
         ))}
       </nav>
@@ -157,7 +156,7 @@ export function MenuBar() {
         </button>
         <button onClick={() => setCmdOpen(true)} title="Search commands" style={{
           height: 32, padding: '0 10px', border: '1px solid var(--line-2)', borderRadius: 8, flexShrink: 0,
-          background: 'var(--paper)', color: 'var(--ink-2)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11,
+          background: 'var(--paper)', color: 'var(--ink-2)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)',
         }}>⌘K</button>
       </div>
 
@@ -168,7 +167,7 @@ export function MenuBar() {
               title={!it.action ? it.hint : undefined} style={itemStyle(!!it.action)}
               onClick={() => { setOpen(null); it.action?.(); }}>
               <span>{it.label}</span>
-              {it.shortcut && <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{it.shortcut}</span>}
+              {it.shortcut && <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{it.shortcut}</span>}
             </button>
           ))}
         </Dropdown>

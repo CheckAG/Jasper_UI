@@ -28,12 +28,12 @@ export function Modal({ title, subtitle, width = 520, onClose, children }: {
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '16px 18px',
           borderBottom: '1px solid var(--line)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h4 style={{ margin: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em' }}>{title}</h4>
-            {subtitle && <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{subtitle}</span>}
+            <h4 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 600, letterSpacing: '-0.01em' }}>{title}</h4>
+            {subtitle && <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>{subtitle}</span>}
           </div>
           <button onClick={onClose} aria-label="Close" style={{
             width: 28, height: 28, border: '1px solid var(--line)', borderRadius: 8,
-            background: 'var(--paper)', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 16, lineHeight: 1,
+            background: 'var(--paper)', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 'var(--text-lg)', lineHeight: 1,
           }}>×</button>
         </div>
         <div style={{ padding: 18, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>

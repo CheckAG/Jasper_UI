@@ -19,8 +19,8 @@ export function TopBar() {
     }}>
       {/* Brand */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-        <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: '-0.01em' }}>JASPER</span>
-        <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>by</span>
+        <span style={{ fontWeight: 600, fontSize: 'var(--text-lg)', letterSpacing: '-0.01em' }}>JASPER</span>
+        <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>by</span>
         <img src="/checkag.png" alt="CheckAg"
           style={{ height: 19, width: 'auto', display: 'block', flexShrink: 0 }} />
       </div>
@@ -30,9 +30,9 @@ export function TopBar() {
         display: 'flex', alignItems: 'center', gap: 10, padding: '4px 12px',
         border: '1px solid var(--line)', borderRadius: 10, background: 'var(--paper)',
       }}>
-        <span style={{ fontWeight: 500, fontSize: 14 }}>{session?.name ?? 'No session'}</span>
+        <span style={{ fontWeight: 500, fontSize: 'var(--text-base)' }}>{session?.name ?? 'No session'}</span>
         <span style={{ color: 'var(--muted)' }}>·</span>
-        <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>
+        <span className="mono" style={{ fontSize: 'var(--text-sm)', color: 'var(--muted)' }}>
           {captures.length} captures
         </span>
         {/* Calibration actually held by the backend, not a local flag that
@@ -47,7 +47,7 @@ export function TopBar() {
           permanently green LED, so it claimed a connection whatever was true. */}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8,
         padding: '4px 10px', border: '1px solid var(--line)', borderRadius: 10,
-        background: 'var(--paper)', fontSize: 12 }}>
+        background: 'var(--paper)', fontSize: 'var(--text-md)' }}>
         <LED status={deviceMeta ? 'ok' : reconnecting ? 'fault' : 'pending'} size={7} />
         {reconnecting ? (
           <span>Reconnecting… plug the instrument back in</span>
@@ -87,10 +87,10 @@ export function TopBar() {
         display: 'flex', alignItems: 'center', gap: 10, padding: '5px 10px 5px 12px',
         border: '1px solid var(--line)', borderRadius: 10,
         background: 'var(--paper)', cursor: 'pointer', color: 'var(--ink-2)',
-        fontFamily: 'var(--font-sans)', fontSize: 12,
+        fontSize: 'var(--text-md)',
       }}>
         <span className="mono" style={{
-          fontSize: 11, padding: '2px 6px', borderRadius: 6,
+          fontSize: 'var(--text-sm)', padding: '2px 6px', borderRadius: 6,
           background: 'var(--tint-2)', color: 'var(--ink)',
         }}>⌘K</span>
         Search or go to…

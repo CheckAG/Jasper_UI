@@ -30,13 +30,20 @@
   /* --- Typography --- */
   --font-sans:  "Geist", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-mono:  "Geist Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-  --font-serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+
+  /* Type scale: every font size in the UI is one of these. Density scales them all. */
+  --text-scale:   1;
+  --text-xs:      calc(10px * var(--text-scale)); /* captions, kbd, uppercase labels */
+  --text-sm:      calc(11px * var(--text-scale)); /* meta, mono readouts */
+  --text-md:      calc(12px * var(--text-scale)); /* secondary text, small controls */
+  --text-base:    calc(13px * var(--text-scale)); /* body, buttons, inputs */
+  --text-lg:      calc(16px * var(--text-scale)); /* dialog and panel titles */
+  --text-xl:      calc(20px * var(--text-scale)); /* page headings, big readouts */
+  --text-display: calc(40px * var(--text-scale)); /* the one hero number */
 
   /* --- Density: Standard (default) --- */
   --gap:        10px;
   --pad:        12px;
-  --font-body:  13.5px;
-  --font-small: 12px;
   --row-h:      32px;
   --radius-sm:  7px;
   --radius-md:  10px;
@@ -69,15 +76,13 @@
 [data-density="comfort"] {
   --gap:       16px;
   --pad:       16px;
-  --font-body: 15px;
-  --font-small:13px;
+  --text-scale: 1.1;
   --row-h:     40px;
 }
 [data-density="lab"] {
   --gap:       6px;
   --pad:       8px;
-  --font-body: 12px;
-  --font-small:11px;
+  --text-scale: 0.9;
   --row-h:     28px;
 }
 
@@ -117,14 +122,15 @@ body {
   color: var(--ink);
   font-family: var(--font-sans);
   font-feature-settings: "ss01", "cv11", "tnum";
-  font-size: var(--font-body);
+  font-size: var(--text-base);
   letter-spacing: -0.005em;
   line-height: 1.5;
 }
+/* Form controls don't inherit the font by default; make them. */
+button, input, select, textarea { font: inherit; }
 
 /* Utility classes */
 .mono   { font-family: var(--font-mono); }
-.serif  { font-family: var(--font-serif); }
 .muted  { color: var(--muted); }
 .ink-2  { color: var(--ink-2); }
 .signal { color: var(--signal); }

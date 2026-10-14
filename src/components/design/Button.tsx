@@ -32,7 +32,7 @@ export function Button({ variant = 'ghost', size = 'md', style, children, ...res
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         padding: size === 'sm' ? '4px 10px' : '7px 14px',
         borderRadius: size === 'sm' ? 6 : 9,
-        fontFamily: 'var(--font-sans)', fontSize: size === 'sm' ? 12 : 13, fontWeight: 500,
+        fontSize: size === 'sm' ? 'var(--text-md)' : 'var(--text-base)', fontWeight: 500,
         cursor: 'pointer', letterSpacing: '-0.005em', transition: 'opacity 0.1s',
         ...styles[variant],
         ...style,

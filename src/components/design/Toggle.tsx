@@ -30,7 +30,7 @@ export function Toggle({ on, onChange, label, disabled }: ToggleProps) {
         }} />
       </span>
       {label && (
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink)' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-sm)', color: 'var(--ink)' }}>
           {label}
         </span>
       )}
