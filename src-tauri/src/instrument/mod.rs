@@ -25,6 +25,19 @@ pub fn discover(skip: Option<&str>) -> Vec<DeviceInfo> {
     tcd1304::discover(skip)
 }
 
+/// Whether `port` is still there: the device node on Linux and macOS (a pty
+/// from the simulator included), the port list on Windows. Never opens it.
+pub fn port_present(port: &str) -> bool {
+    std::path::Path::new(port).exists()
+        || serialport::available_ports().is_ok_and(|ps| ps.iter().any(|p| p.port_name == port))
+}
+
+/// The port where the instrument with `serial` answers now, if any. A board
+/// that comes back after an unplug may come back on another port.
+pub fn find_serial(serial: &str) -> Option<String> {
+    discover(None).into_iter().find(|d| d.serial == serial && d.status == "available").map(|d| d.id)
+}
+
 /// Open whatever answers on `port`: each driver's handshake in turn, the first
 /// that succeeds wins.
 pub fn connect(port: &str) -> Result<Driver, String> {

@@ -2,6 +2,7 @@ import { useAcqStore }     from '../../store/acqStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useUIStore }      from '../../store/uiStore';
 import { ipc }             from '../../lib/ipc';
+import { useRecentStore, byRecent } from '../../store/recentStore';
 
 export interface MenuItem {
   label:     string;
@@ -21,12 +22,23 @@ export function buildMenus(): Menu[] {
   const connected = acq.deviceMeta !== null;
   const hasCaptures = ses.captures.length > 0;
   const needDevice = 'Connect an instrument first';
+  const recent = useRecentStore.getState();
+  // The five last opened, the current one aside: it is a switch, not a reload.
+  const recentWorkspaces: MenuItem[] = byRecent(ses.sessions, recent.opened)
+    .filter(s => s.id !== ses.activeId && recent.opened[s.id]).slice(0, 5)
+    .map(s => ({ label: s.name, action: () => { ses.setActiveSession(s.id); } }));
+  const recentExports: MenuItem[] = recent.exports.slice(0, 5).map(e => ({
+    label: e.path.split(/[\\/]/).pop() ?? e.path,
+    action: () => { ipc.reveal(e.path).catch(err => ui.pushToast(String(err), 'error')); },
+  }));
 
   return [
     { name: 'File', items: [
       { label: 'New workspace…', action: () => ui.setNewSessionOpen(true) },
       '-',
       { label: 'Export…', action: hasCaptures ? () => ui.setExportOpen(true) : undefined, hint: 'No captures yet' },
+      ...(recentWorkspaces.length ? ['-' as const, { label: 'Recent workspaces', hint: 'Click one below to switch' }, ...recentWorkspaces] : []),
+      ...(recentExports.length ? ['-' as const, { label: 'Recent exports', hint: 'Click one below to show it in its folder' }, ...recentExports] : []),
     ]},
     { name: 'Device', items: [
       { label: 'Instruments…', action: () => ui.setDialog('instruments') },
@@ -43,6 +55,8 @@ export function buildMenus(): Menu[] {
       { label: 'Capture', shortcut: 'Space',
         action: connected && acq.paused ? () => { acq.runCapture(); } : undefined,
         hint: connected ? 'Freeze first' : needDevice },
+      { label: 'Burst capture…', action: connected ? () => ui.setDialog('burst') : undefined, hint: needDevice },
+      { label: 'Settings profiles…', action: () => ui.setDialog('profiles') },
       '-',
       { label: acq.calHeld.dark ? 'Remove dark' : 'Take dark', shortcut: 'D',
         action: acq.calHeld.dark || acq.liveSpectrum ? () => { acq.toggleCal('dark'); } : undefined,

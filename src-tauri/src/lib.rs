@@ -42,6 +42,16 @@ pub fn run() {
                 Err(e) => eprintln!("[api] not listening on 127.0.0.1:{}: {e}", api::server::PORT),
             }
 
+            // Finds the connected board again after a cable unplug (F6).
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let events: std::sync::Arc<dyn api::Events> = std::sync::Arc::new(handle.clone());
+                loop {
+                    std::thread::sleep(api::WATCH_EVERY);
+                    api::watch_tick(&handle.state::<AppState>(), &events, &instrument::find_serial);
+                }
+            });
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -65,6 +75,9 @@ pub fn run() {
             cmd_delete_capture,
             cmd_count_captures,
             cmd_save_audit,
+            cmd_load_store,
+            cmd_save_store,
+            cmd_reveal,
             // Sidecar
             cmd_sidecar_request,
             // Export

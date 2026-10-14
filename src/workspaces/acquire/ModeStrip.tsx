@@ -1,5 +1,6 @@
 import { useAcqStore }     from '../../store/acqStore';
 import { useSessionStore } from '../../store/sessionStore';
+import { useUIStore }      from '../../store/uiStore';
 
 export function ModeStrip() {
   const { params, paused, setParam, setPaused } = useAcqStore();
@@ -12,6 +13,9 @@ export function ModeStrip() {
   const held = useAcqStore(s => s.calHeld);
   const busy = useAcqStore(s => s.calBusy);
   const toggleCal = useAcqStore(s => s.toggleCal);
+  const setDialog = useUIStore(s => s.setDialog);
+  const bursting  = useAcqStore(s => s.bursting);
+  const shots     = useAcqStore(s => s.captureProgress);
 
   const allSelected = captures.length > 0 && selectedIds.length === captures.length;
 
@@ -75,6 +79,22 @@ export function ModeStrip() {
           </button>
         );
       })}
+
+      <button onClick={() => setDialog('burst')} disabled={!deviceMeta}
+        style={{ ...chipBtn(bursting), position: 'relative', overflow: 'visible',
+          cursor: deviceMeta ? 'pointer' : 'not-allowed', opacity: deviceMeta ? 1 : 0.5 }}
+        title={deviceMeta ? 'Take N captures, optionally spaced in time' : 'Connect an instrument first'}>
+        {bursting && shots && <>
+          {/* Fill for shots done; a flash each time one is saved. */}
+          <span aria-hidden style={{ position: 'absolute', inset: 0, borderRadius: 'inherit', pointerEvents: 'none',
+            transformOrigin: 'left', transform: `scaleX(${shots.done / shots.total})`,
+            background: 'var(--signal)', opacity: 0.18, transition: 'transform 200ms ease-out' }} />
+          {shots.done > 0 && <span key={shots.done} aria-hidden className="shot-flash" />}
+        </>}
+        <span style={{ position: 'relative' }}>
+          {bursting && shots ? `Burst ${shots.done}/${shots.total}` : 'Burst…'}
+        </span>
+      </button>
 
       <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', margin: '0 4px' }} />
 

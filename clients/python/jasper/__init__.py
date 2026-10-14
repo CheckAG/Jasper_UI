@@ -65,7 +65,7 @@ class Client:
 
     def subscribe(self, *events: str):
         """Replace this connection's events: spectrum-frame, capture-progress,
-        capture-saved. No names stops them. Read them with `events()`."""
+        capture-saved, burst-progress, firmware-progress, device-state. No names stops them. Read them with `events()`."""
         return self.call("subscribe", {"events": list(events)})
 
     def events(self):

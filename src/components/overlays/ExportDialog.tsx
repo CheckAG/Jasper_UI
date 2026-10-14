@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useRecentStore } from '../../store/recentStore';
 import { useUIStore }      from '../../store/uiStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { ipc }             from '../../lib/ipc';
@@ -45,6 +46,7 @@ export function ExportDialog() {
       }
       if (path) {
         setResult(path);
+        useRecentStore.getState().addExport(path);
         await ipc.saveAudit({
           id: Math.random().toString(36).slice(2),
           sessionId: activeId,

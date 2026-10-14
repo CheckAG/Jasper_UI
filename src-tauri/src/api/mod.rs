@@ -39,6 +39,25 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self { Self { integration_ms: 120, averages: 4, workspace: None } }
 }
+impl Settings {
+    /// The integration and averaging last used, so a restart picks up where
+    /// the user left off. Missing or unreadable: the defaults.
+    pub fn load(data_dir: &std::path::Path) -> Self {
+        let saved: Value = std::fs::read_to_string(data_dir.join("settings.json")).ok()
+            .and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let get = |k: &str| saved.get(k).and_then(Value::as_u64).map(|n| n as u32);
+        let d = Self::default();
+        Self { integration_ms: get("integration_ms").unwrap_or(d.integration_ms),
+               averages: get("averages").unwrap_or(d.averages).clamp(1, AVERAGES_MAX), workspace: None }
+    }
+    fn save(&self, data_dir: &std::path::Path) {
+        let body = json!({ "integration_ms": self.integration_ms, "averages": self.averages });
+        // Losing it only costs the user retyping two numbers next launch.
+        if let Err(e) = std::fs::write(data_dir.join("settings.json"), body.to_string()) {
+            eprintln!("[settings] not saved: {e}");
+        }
+    }
+}
 
 pub const AVERAGES_MAX: u32 = 64;
 /// Fractions of the device's full scale (`DeviceMetadata.max_intensity`), so
@@ -56,6 +75,17 @@ pub const CONFIRM_TIMEOUT: Duration = Duration::from_secs(120);
 /// Privileged requests waiting for a person: id → where the answer goes.
 #[derive(Default)]
 pub struct Confirmations { next: AtomicU64, pending: Mutex<HashMap<u64, mpsc::Sender<bool>>> }
+
+/// The board the user connected, remembered by serial so it can be found again
+/// after an unplug, possibly on another port (F6, PRD S1-02).
+#[derive(Debug, Clone, Default)]
+pub struct Wanted {
+    pub serial: String,
+    /// Live was running when last seen connected: resume it on reconnect.
+    pub live:   bool,
+    /// Gone, and being looked for.
+    pub lost:   bool,
+}
 
 /// Who made a call. Scripts and agents get errors where the GUI gets clamping.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
@@ -178,7 +208,8 @@ fn read(state: &AppState, name: &str) -> Result<Value, ApiError> {
     Ok(match name {
         "device.state" => {
             let connected = lock(&state.driver)?.is_connected();
-            json!(if !connected { "disconnected" } else if state.live.load(Ordering::SeqCst) { "acquiring" } else { "idle" })
+            let lost = lock(&state.wanted)?.as_ref().is_some_and(|w| w.lost);
+            json!(if lost { "reconnecting" } else if !connected { "disconnected" } else if state.live.load(Ordering::SeqCst) { "acquiring" } else { "idle" })
         }
         "device.info" => json!(lock(&state.driver)?.device_metadata()),
         "device.diagnostics" => json!(lock(&state.driver)?.diagnostics()),
@@ -229,6 +260,7 @@ fn write(state: &AppState, events: &Arc<dyn Events>, caller: Caller, name: &str,
             {
                 let mut s = lock(&state.settings)?;
                 if name == "acquisition.averages" { s.averages = applied } else { s.integration_ms = applied }
+                s.save(&state.data_dir);
             }
             // The stream runs on the settings it started with; restart it.
             if state.live.load(Ordering::SeqCst) { start_live(state, events.clone())?; }
@@ -264,9 +296,13 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &
             let port = arg("port").ok_or_else(|| ApiError::new(4011, "INVALID_VALUE", "connect needs a port"))?;
             state.stop_acquisition();
             connect_port(&state.driver, &port).map_err(device)?;
-            Ok(json!(lock(&state.driver)?.device_metadata()))
+            let meta = lock(&state.driver)?.device_metadata();
+            *lock(&state.wanted)? = meta.as_ref().map(|m| Wanted { serial: m.serial.clone(), ..Default::default() });
+            Ok(json!(meta))
         }
         "disconnect" => {
+            // Meant: not a cable to wait for.
+            *lock(&state.wanted)? = None;
             state.stop_acquisition();
             lock(&state.driver)?.disconnect();
             Ok(json!("ok"))
@@ -274,6 +310,7 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &
         "start_live" => { start_live(state, events.clone())?; Ok(json!("ok")) }
         "stop_live" => { state.stop_acquisition(); Ok(json!("ok")) }
         "capture" => capture(state, events, &args),
+        "burst" => burst(state, events, &args),
         "capture_dark" | "capture_reference" => tag_last_frame(state, if command == "capture_dark" { "dark" } else { "reference" }),
         "clear_dark" | "clear_reference" => {
             let mut cal = lock(&state.calibration)?;
@@ -295,6 +332,9 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &
                 _ => return Err(ApiError::new(4011, "INVALID_VALUE", "update_firmware needs srec or path")),
             };
             state.stop_acquisition();
+            // The watcher must not probe a board that is mid-flash in its
+            // bootloader. A failed install leaves nothing wanted: run it again.
+            *lock(&state.wanted)? = None;
             // Released for the install: it takes tens of seconds, and metadata
             // polls must not stall behind it.
             lock(&state.driver)?.disconnect();
@@ -302,6 +342,9 @@ fn invoke(state: &AppState, events: &Arc<dyn Events>, caller: Caller, command: &
                 events.emit("firmware-progress", json!({ "stage": stage, "done": done, "total": total }));
             }).map_err(device)?;
             connect_port(&state.driver, &port).map_err(device)?;
+            // Two statements: never hold the driver while taking `wanted` (watch_tick takes them the other way).
+            let meta = lock(&state.driver)?.device_metadata();
+            *lock(&state.wanted)? = meta.map(|m| Wanted { serial: m.serial, ..Default::default() });
             Ok(json!(firmware))
         }
         // A person's answer to a privileged request. The GUI only: nothing
@@ -371,6 +414,57 @@ fn tag_last_frame(state: &AppState, which: &str) -> Result<Value, ApiError> {
 /// args: tag, label, color, id (all optional; the GUI passes its own).
 fn capture(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Value, ApiError> {
     state.stop_acquisition();
+    shoot(state, events, args)
+}
+
+/// Longest burst and longest wait between its shots.
+pub const BURST_MAX: u64 = 1000;
+pub const BURST_INTERVAL_MAX_MS: u64 = 3_600_000;
+
+/// `count` captures, each started `interval_ms` after the last one started
+/// (0 = back to back), each saved like a single capture. `label` names them
+/// label_001, label_002, ...; without one they are spectra_NNN. `stop_live`
+/// (or anything else that stops acquisition) ends it; the shots taken stay.
+///
+/// args: count, interval_ms, label, tag.
+fn burst(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Value, ApiError> {
+    let num = |k: &str, range: std::ops::RangeInclusive<u64>| args.get(k).unwrap_or(&json!(0)).as_u64()
+        .filter(|n| range.contains(n))
+        .ok_or_else(|| ApiError::new(4011, "INVALID_VALUE", format!("{k} must be a whole number from {} to {}", range.start(), range.end())));
+    let count = num("count", 1..=BURST_MAX)?;
+    let interval = Duration::from_millis(num("interval_ms", 0..=BURST_INTERVAL_MAX_MS)?);
+    // A burst is for the record: unsaved shots would be thrown away one by one.
+    if lock(&state.settings)?.workspace.is_none() {
+        return Err(ApiError::new(4020, "PRECONDITION_FAILED", "open a workspace first: burst shots are saved there"));
+    }
+    let label = args.get("label").and_then(Value::as_str).map(str::trim).filter(|l| !l.is_empty());
+    state.stop_acquisition();
+    let generation = state.acq_generation.load(Ordering::SeqCst);
+    let stopped = || state.acq_generation.load(Ordering::SeqCst) != generation;
+
+    let mut ids = Vec::new();
+    let mut last = Value::Null;
+    for i in 1..=count {
+        let started = std::time::Instant::now();
+        let mut shot = args.clone();
+        shot["label"] = label.map_or(Value::Null, |l| json!(format!("{l}_{i:03}")));
+        shot["id"] = json!(format!("cap-{}-{i}", now_ms()));   // shots can land in the same millisecond
+        let out = shoot(state, events, &shot)?;
+        ids.push(out["saved"]["id"].clone());
+        last = out["frame"].clone();
+        events.emit("burst-progress", json!({ "done": i, "total": count }));
+        if i == count { break; }
+        // Sliced, so a stop is seen within a tenth of a second, not after the interval.
+        while !stopped() && started.elapsed() < interval {
+            std::thread::sleep(Duration::from_millis(100).min(interval.saturating_sub(started.elapsed())));
+        }
+        if stopped() { break; }
+    }
+    Ok(json!({ "taken": ids.len(), "total": count, "stopped": (ids.len() as u64) < count, "ids": ids, "frame": last }))
+}
+
+/// One capture without stopping anything first: `capture` and `burst` share it.
+fn shoot(state: &AppState, events: &Arc<dyn Events>, args: &Value) -> Result<Value, ApiError> {
     let params = params(state)?;
     let frame = {
         let driver = lock(&state.driver)?;
@@ -439,6 +533,48 @@ fn save_capture(state: &AppState, session_id: &str, frame: &SpectrumFrame, raw: 
     };
     Ok(json!({ "id": row.id, "label": row.label, "timestamp": row.timestamp, "tag": row.tag,
                "params": params, "file": row.file_path, "file_error": file_error }))
+}
+
+// ── Reconnect ────────────────────────────────────────────────────────────────
+
+/// How often the watcher looks at the wanted board.
+pub const WATCH_EVERY: Duration = Duration::from_secs(1);
+
+/// One look at the wanted board; `lib.rs` runs it every WATCH_EVERY.
+///
+/// Connected: notice it going away — its port gone (an idle unplug touches
+/// nothing else), or the driver having dropped it after an I/O error. Then stop
+/// the stream and report "reconnecting". Lost: ask `find` for the port the
+/// same serial answers on, connect, and resume Live if it was running.
+/// Settings, dark and reference are the backend's and carry over.
+pub fn watch_tick(state: &AppState, events: &Arc<dyn Events>, find: &dyn Fn(&str) -> Option<String>) {
+    // Held throughout, so a connect or disconnect from a caller waits rather
+    // than being overwritten by what this tick saw.
+    let Ok(mut slot) = state.wanted.lock() else { return };
+    let Some(want) = slot.as_mut() else { return };
+    if !want.lost {
+        let Ok(driver) = state.driver.lock() else { return };
+        let port = driver.device_list().first().map(|d| d.id.clone());
+        if driver.is_connected() && port.as_deref().is_some_and(crate::instrument::port_present) {
+            want.live = state.live.load(Ordering::SeqCst);
+            return;
+        }
+        drop(driver);
+        state.stop_acquisition();
+        if let Ok(mut d) = state.driver.lock() { d.disconnect(); }
+        want.lost = true;
+        eprintln!("[api] instrument {} lost; looking for it", want.serial);
+        events.emit("device-state", json!({ "state": "reconnecting", "serial": want.serial }));
+        return;
+    }
+    let Some(port) = find(&want.serial) else { return };
+    let same = connect_port(&state.driver, &port).is_ok() && state.driver.lock()
+        .is_ok_and(|d| d.device_metadata().is_some_and(|m| m.serial == want.serial));
+    if !same { return; }
+    want.lost = false;
+    eprintln!("[api] instrument {} back on {port}", want.serial);
+    let resumed = want.live && start_live(state, events.clone()).is_ok();
+    events.emit("device-state", json!({ "state": if resumed { "acquiring" } else { "idle" }, "serial": want.serial, "port": port }));
 }
 
 // ── Live stream ──────────────────────────────────────────────────────────────
@@ -610,6 +746,72 @@ mod tests {
         let _ = child.kill();
     }
 
+    fn simulator() -> (std::process::Child, String) {
+        let sim = format!("{}/../tools/tcd1304-sim.py", env!("CARGO_MANIFEST_DIR"));
+        let mut child = std::process::Command::new("python3").arg(&sim)
+            .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().unwrap();
+        let mut pty = String::new();
+        std::io::BufReader::new(child.stdout.take().unwrap()).read_line(&mut pty).unwrap();
+        (child, pty.trim().to_string())
+    }
+
+    /// Pull the cable during Live and while idle: the board is reported lost,
+    /// found again on its new port by serial, and Live resumes only if it ran.
+    /// A deliberate disconnect is never undone.
+    #[test]
+    fn a_board_that_comes_back_after_an_unplug_is_reconnected() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path(), dir.path().join("spectra"));
+        let sink = Arc::new(Sink(Mutex::new(vec![])));
+        let ev: Arc<dyn Events> = sink.clone();
+        let call = |v: Value| dispatch(&state, ev.clone(), Caller::Gui, req(v));
+        let st = || call(json!({"method":"read","params":{"name":"device.state"}})).unwrap();
+        let frames = || sink.0.lock().unwrap().iter().filter(|e| *e == "spectrum-frame").count();
+        let wait_frame = || { let n = frames(); for _ in 0..100 { if frames() > n { return true; } std::thread::sleep(Duration::from_millis(50)); } false };
+        let nowhere = |_: &str| None;
+
+        let (mut a, pty_a) = simulator();
+        call(json!({"method":"invoke","params":{"command":"connect","args":{"port":pty_a}}})).unwrap();
+        call(json!({"method":"write","params":{"name":"acquisition.averages","value":1}})).unwrap();
+        call(json!({"method":"invoke","params":{"command":"start_live"}})).unwrap();
+        assert!(wait_frame());
+        watch_tick(&state, &ev, &nowhere);   // seen connected and live
+        assert_eq!(st(), json!("acquiring"));
+
+        // Unplug during Live.
+        a.kill().unwrap(); a.wait().unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        watch_tick(&state, &ev, &nowhere);
+        assert_eq!(st(), json!("reconnecting"));
+        watch_tick(&state, &ev, &nowhere);   // still nowhere: stays lost
+        assert_eq!(st(), json!("reconnecting"));
+
+        // Back (the port may or may not be the same one): reconnected, Live resumed on the same settings.
+        let (mut b, pty_b) = simulator();
+        watch_tick(&state, &ev, &|serial: &str| (serial == "0011223344556677").then(|| pty_b.clone()));
+        assert_eq!(st(), json!("acquiring"));
+        assert!(wait_frame(), "Live did not resume");
+        assert_eq!(call(json!({"method":"read","params":{"name":"acquisition.averages"}})).unwrap(), json!(1));
+
+        // Unplug while idle: only the vanished port says so.
+        call(json!({"method":"invoke","params":{"command":"stop_live"}})).unwrap();
+        watch_tick(&state, &ev, &nowhere);
+        b.kill().unwrap(); b.wait().unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        watch_tick(&state, &ev, &nowhere);
+        assert_eq!(st(), json!("reconnecting"));
+        let (mut c, pty_c) = simulator();
+        watch_tick(&state, &ev, &|_: &str| Some(pty_c.clone()));
+        assert_eq!(st(), json!("idle"), "Live was off; it stays off");
+        assert!(sink.0.lock().unwrap().iter().filter(|e| *e == "device-state").count() >= 4);
+
+        // Disconnect on purpose: nothing comes back.
+        call(json!({"method":"invoke","params":{"command":"disconnect"}})).unwrap();
+        watch_tick(&state, &ev, &|_: &str| Some(pty_c.clone()));
+        assert_eq!(st(), json!("disconnected"));
+        c.kill().ok();
+    }
+
     /// A privileged command from a script waits for the GUI; only the GUI can
     /// answer; denied and approved requests both end in the audit log.
     #[test]
@@ -655,5 +857,60 @@ mod tests {
         let log = std::fs::read_to_string(&state.audit_path).unwrap();
         assert!(log.contains("\"result\":\"DENIED\"") && log.contains("\"command\":\"confirm\""), "{log}");
         assert!(!log.contains("not an image"), "the image itself is not logged");
+    }
+
+    /// A burst files every shot as its own capture, named label_NNN, and stops
+    /// early on stop_live keeping the shots already taken.
+    #[test]
+    fn a_burst_saves_each_shot_and_stops_on_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path(), dir.path().join("spectra"));
+        let sink = Arc::new(Sink(Mutex::new(vec![])));
+        let ev: Arc<dyn Events> = sink.clone();
+        let call = |v: Value| dispatch(&state, ev.clone(), Caller::Script, req(v));
+        let burst = |args: Value| call(json!({"method":"invoke","params":{"command":"burst","args":args}}));
+
+        let (mut sim, pty) = simulator();
+        call(json!({"method":"invoke","params":{"command":"connect","args":{"port":pty}}})).unwrap();
+        call(json!({"method":"write","params":{"name":"acquisition.averages","value":1}})).unwrap();
+        assert_eq!(burst(json!({"count":2})).unwrap_err().message, "PRECONDITION_FAILED");   // no workspace
+        let conn = db::open(&state.db_path).unwrap();
+        conn.execute("INSERT INTO sessions (id, name, created_at) VALUES ('s1','Burst',0)", []).unwrap();
+        call(json!({"method":"write","params":{"name":"workspace.active","value":"s1"}})).unwrap();
+        assert_eq!(burst(json!({})).unwrap_err().message, "INVALID_VALUE");
+        assert_eq!(burst(json!({"count":1001})).unwrap_err().message, "INVALID_VALUE");
+
+        let out = burst(json!({"count":3, "label":"leaf", "tag":"T1"})).unwrap();
+        assert_eq!((out["taken"].clone(), out["stopped"].clone()), (json!(3), json!(false)));
+        let rows = db::load_captures(&conn, "s1").unwrap();
+        let labels: Vec<_> = rows.iter().filter_map(|r| r.label.clone()).collect();
+        assert_eq!(labels, ["leaf_001", "leaf_002", "leaf_003"]);
+        assert!(rows.iter().all(|r| r.tag == "T1" && r.file_path.is_some()));
+        assert_eq!(sink.0.lock().unwrap().iter().filter(|e| *e == "burst-progress").count(), 3);
+
+        // A long interval, stopped after the first shot: one taken, unnamed ones are spectra_NNN.
+        std::thread::scope(|s| {
+            let run = s.spawn(|| burst(json!({"count":5, "interval_ms":60_000})).unwrap());
+            std::thread::sleep(Duration::from_millis(1500));
+            call(json!({"method":"invoke","params":{"command":"stop_live"}})).unwrap();
+            let out = run.join().unwrap();
+            assert_eq!((out["taken"].clone(), out["stopped"].clone()), (json!(1), json!(true)));
+        });
+        assert_eq!(db::load_captures(&conn, "s1").unwrap().last().unwrap().label.as_deref(), Some("spectra_001"));
+        sim.kill().unwrap();
+    }
+
+    /// Integration and averaging survive a restart; the workspace does not.
+    #[test]
+    fn settings_are_restored_on_the_next_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(dir.path(), dir.path().join("spectra"));
+        let ev: Arc<dyn Events> = Arc::new(Sink(Mutex::new(vec![])));
+        for (name, value) in [("acquisition.integration_time_ms", json!(750)), ("acquisition.averages", json!(9)), ("workspace.active", json!("s1"))] {
+            dispatch(&state, ev.clone(), Caller::Gui, req(json!({"method":"write","params":{"name":name,"value":value}}))).unwrap();
+        }
+        let s = Settings::load(dir.path());
+        assert_eq!((s.integration_ms, s.averages, s.workspace), (750, 9, None));
+        assert_eq!(Settings::load(&dir.path().join("nowhere")).integration_ms, Settings::default().integration_ms);
     }
 }

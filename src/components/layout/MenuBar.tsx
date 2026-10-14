@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useRecentStore, ago, byRecent } from '../../store/recentStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useUIStore }      from '../../store/uiStore';
 import { ipc }             from '../../lib/ipc';
@@ -44,6 +45,7 @@ const rule = <div style={{ height: 1, background: 'var(--line)', margin: '4px 2p
 function WorkspaceSwitcher() {
   const { sessions, activeId, captures, setActiveSession, deleteSession, activeSession } = useSessionStore();
   const setNewSessionOpen = useUIStore(s => s.setNewSessionOpen);
+  const opened = useRecentStore(s => s.opened);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const current = activeSession();
   const close = () => setAnchor(null);
@@ -80,7 +82,7 @@ function WorkspaceSwitcher() {
       </button>
       {anchor && (
         <Dropdown anchor={anchor} onClose={close}>
-          {sessions.map(s => (
+          {byRecent(sessions, opened).map(s => (
             <button key={s.id} {...hover} style={itemStyle(true)}
               onClick={() => { close(); setActiveSession(s.id); }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -88,6 +90,7 @@ function WorkspaceSwitcher() {
                 {s.id === activeId ? '✓ ' : ''}{s.name}
               </span>
               <span className="mono" style={{ fontSize: 11, color: 'var(--muted)', flexShrink: 0 }}>
+                {opened[s.id] && s.id !== activeId ? `${ago(opened[s.id])} · ` : ''}
                 {s.id === activeId ? captures.length : s.captureCount}
               </span>
             </button>

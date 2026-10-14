@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { AcqParams, CursorState, Spectrum, DeviceMetadata } from '../lib/types';
+import type { AcqParams, CursorState, Spectrum, DeviceMetadata, BurstSettings } from '../lib/types';
 import { ipc } from '../lib/ipc';
 import { useSessionStore } from './sessionStore';
 import { useUIStore } from './uiStore';
@@ -14,6 +14,8 @@ interface AcqStore {
    *  Held here rather than fetched per component, so the top bar, the Instrument
    *  panel and the Acquire strip cannot disagree about what is connected. */
   deviceMeta: DeviceMetadata | null;
+  /** The connected board went away (cable pulled); the backend is looking for it. */
+  reconnecting: boolean;
   /** Which calibration frames the backend actually holds. */
   calHeld: { dark: boolean; reference: boolean };
   /** The held dark was taken at other integration/averaging than now. */
@@ -24,6 +26,11 @@ interface AcqStore {
   captureProgress: { done: number; total: number } | null;
   /** The dark or reference being taken or discarded right now. */
   calBusy: 'dark' | 'reference' | null;
+  /** A burst is running; `captureProgress` then counts shots, not scans. */
+  bursting: boolean;
+  /** What the Burst dialog shows; here so a settings profile can carry it. */
+  burstSettings: BurstSettings;
+  setBurstSettings: (b: Partial<BurstSettings>) => void;
 
   setParam: <K extends keyof AcqParams>(key: K, value: AcqParams[K]) => void;
   setCursor: (c: CursorState | null) => void;
@@ -45,9 +52,20 @@ interface AcqStore {
   /** Name for the next capture; empty means automatic (spectra_NNN). Cleared after each capture. */
   captureName: string;
   setCaptureName: (n: string) => void;
+  /** Run a burst: `count` captures `intervalMs` apart, each filed in the workspace.
+   *  Progress shows in `captureProgress` as shots, so Capture waits for it. */
+  runBurst: (count: number, intervalMs: number, label: string, tag: string) => Promise<void>;
   /** Take a dark or reference from the spectrum on the plot, or discard the one
    *  held. Shared by the toolbar, the Acquire menu and the D / R shortcuts. */
   toggleCal: (which: 'dark' | 'reference') => Promise<void>;
+}
+
+/** Show only these captures on the plot (the new capture, or a burst's shots).
+ *  More can be picked in the Captures panel. */
+function showOnPlot(ids: string[]) {
+  const ses = useSessionStore.getState();
+  ses.clearSelected();
+  ids.forEach(ses.toggleSelected);
 }
 
 export const useAcqStore = create<AcqStore>()(
@@ -68,11 +86,15 @@ export const useAcqStore = create<AcqStore>()(
     paused: true,
     liveSpectrum: null,
     deviceMeta:   null,
+    reconnecting: false,
     calHeld:      { dark: false, reference: false },
     darkStale:    false,
     fps:          0,
     captureProgress: null,
     calBusy:      null,
+    bursting:     false,
+    burstSettings: { count: 10, seconds: 0, label: '' },
+    setBurstSettings: (b) => set((s) => { Object.assign(s.burstSettings, b); }),
     sampleTag:    '',
     captureName:  '',
     setCaptureName: (n) => set((s) => { s.captureName = n; }),
@@ -91,6 +113,8 @@ export const useAcqStore = create<AcqStore>()(
     setPaused: (v) => {
       if (!v && !get().deviceMeta) return;
       set((s) => { s.paused = v; });   // optimistic; the refresh below corrects it
+      // Freezing starts a clean plot: the next capture is what shows on it.
+      if (v) useSessionStore.getState().clearSelected();
       (v ? ipc.stopLive() : ipc.startLive())
         .catch(e => useUIStore.getState().pushToast(String(e), 'error'))
         .finally(() => get().refreshInstrument());
@@ -137,6 +161,8 @@ export const useAcqStore = create<AcqStore>()(
           id, sessionId, label, timestamp: r.timestamp, tag, params: r.params,
           xs: r.spectrum.xs, ys: r.spectrum.ys, color,
         });
+        // Live off hides the live trace, so the capture is overlaid to be seen.
+        showOnPlot([id]);
         if (r.fileError) useUIStore.getState().pushToast(`"${label}" is in the database, but its .jdx file was not written: ${r.fileError}`, 'error');
         else if (r.file) useUIStore.getState().pushToast(`Saved ${r.file.split(/[\\/]/).pop()}`, 'success');
       } catch (e) {
@@ -144,6 +170,30 @@ export const useAcqStore = create<AcqStore>()(
       } finally {
         stop();
         set((s) => { s.captureProgress = null; });
+      }
+    },
+
+    runBurst: async (count, intervalMs, label, tag) => {
+      if (get().captureProgress) return;
+      if (!get().paused) {
+        useUIStore.getState().pushToast('Turn Live off before a burst.', 'info');
+        return;
+      }
+      set((s) => { s.captureProgress = { done: 0, total: count }; s.bursting = true; });
+      const stop = ipc.onBurstProgress((done, total) =>
+        set((s) => { s.captureProgress = { done, total }; }));
+      try {
+        const r = await ipc.burst({ count, intervalMs, label: label.trim(), tag }, get().params);
+        if (r.spectrum) set((s) => { s.liveSpectrum = r.spectrum; });
+        showOnPlot(r.ids);
+        // The shots reach the Captures panel through capture-saved.
+        useUIStore.getState().pushToast(r.stopped ? `Burst stopped: ${r.taken} of ${r.total} saved.`
+          : `Burst done: ${r.taken} captures saved.`, r.stopped ? 'info' : 'success');
+      } catch (e) {
+        useUIStore.getState().pushToast(String(e), 'error');
+      } finally {
+        stop();
+        set((s) => { s.captureProgress = null; s.bursting = false; });
       }
     },
 
@@ -179,7 +229,11 @@ export const useAcqStore = create<AcqStore>()(
     refreshInstrument: async () => {
       let st;
       try { st = await ipc.readInstrument(); } catch { return; }
+      const was = get().reconnecting;
+      if (st.reconnecting && !was) useUIStore.getState().pushToast('Instrument lost. Reconnect the cable; JASPER will pick it up again.', 'error');
+      if (!st.reconnecting && was && st.meta) useUIStore.getState().pushToast('Instrument reconnected.', 'success');
       set((s) => {
+        s.reconnecting = st.reconnecting;
         // A new (or lost) device: the last frame belongs to the old one, so it
         // goes; otherwise Dark/Reference stay enabled against a spectrum that is gone.
         if (st.meta?.serial !== s.deviceMeta?.serial) s.liveSpectrum = null;

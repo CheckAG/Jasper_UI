@@ -39,10 +39,15 @@ pub struct AppState {
     pub live:            Arc<AtomicBool>,
     /// Device API audit log, one JSON object per line.
     pub audit_path:      std::path::PathBuf,
+    /// App data folder: settings.json (last integration/averaging) and profiles.json.
+    pub data_dir:        std::path::PathBuf,
     /// Socket clients that asked for events (`subscribe`). Arc: the server holds it too.
     pub subscribers:     Arc<crate::api::server::Hub>,
     /// Privileged requests from outside the app waiting for a person.
     pub confirmations:   crate::api::Confirmations,
+    /// The board to keep connected: set by connect, cleared by disconnect.
+    /// `api::watch_tick` uses it to find the board again after an unplug.
+    pub wanted:          Mutex<Option<crate::api::Wanted>>,
 }
 
 impl AppState {
@@ -94,6 +99,7 @@ impl AppState {
             }
         }
 
+        let wanted = driver.device_metadata().map(|m| crate::api::Wanted { serial: m.serial, ..Default::default() });
         Self {
             driver:         Arc::new(Mutex::new(driver)),
             db_path,
@@ -103,11 +109,13 @@ impl AppState {
             last_raw: Arc::new(Mutex::new(None)),
             calibration:    Arc::new(Mutex::new(Default::default())),
             sidecar:        SidecarHolder::new(script_path),
-            settings:       Mutex::new(Default::default()),
+            settings:       Mutex::new(crate::api::Settings::load(data_dir)),
             live:           Arc::new(AtomicBool::new(false)),
             audit_path:     data_dir.join("api-audit.jsonl"),
+            data_dir:       data_dir.to_path_buf(),
             subscribers:    Default::default(),
             confirmations:  Default::default(),
+            wanted:         Mutex::new(wanted),
         }
     }
 

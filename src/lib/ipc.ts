@@ -16,7 +16,7 @@ import type {
   AcqParams, Spectrum, DeviceInfo, DeviceEvent, DeviceMetadata, DiagEntry,
   CalResult, XCalResult, PipelineNode, PipelineResult,
   ChemAlgorithm, ModelMeta, PCAResult, RegressionResult,
-  PredictionResult, MixtureResult, Session, Capture,
+  PredictionResult, MixtureResult, Session, Capture, Profile, Recent,
 } from './types';
 import type {
   DeviceRowDTO, DiagEntryDTO, DeviceMetadataDTO, FrameDTO, CalResultDTO, XCalResultDTO,
@@ -97,11 +97,11 @@ export const deviceApi = {
     callApi<T>({ method: 'invoke', params: { command, args } }),
 };
 
-const INSTRUMENT_VARS = ['device.info', 'reference.dark', 'reference.dark_stale', 'reference.white', 'acquisition.live',
+const INSTRUMENT_VARS = ['device.info', 'device.state', 'reference.dark', 'reference.dark_stale', 'reference.white', 'acquisition.live',
   'acquisition.integration_time_ms', 'acquisition.averages', 'processing.mode'];
 
 export interface InstrumentState {
-  meta: DeviceMetadata | null; dark: boolean; darkStale: boolean; reference: boolean; live: boolean;
+  meta: DeviceMetadata | null; reconnecting: boolean; dark: boolean; darkStale: boolean; reference: boolean; live: boolean;
   integration: number; averaging: number; mode: AcqParams['mode'];
 }
 
@@ -185,6 +185,7 @@ export const ipc = {
   readInstrument: (): Promise<InstrumentState> => IS_TAURI
     ? deviceApi.read<Record<string, unknown>>(INSTRUMENT_VARS).then(v => ({
         meta: metaFromDTO(v['device.info'] as DeviceMetadataDTO | null),
+        reconnecting: v['device.state'] === 'reconnecting',
         dark: v['reference.dark'] as boolean,
         darkStale: v['reference.dark_stale'] as boolean,
         reference: v['reference.white'] as boolean,
@@ -193,7 +194,7 @@ export const ipc = {
         averaging: v['acquisition.averages'] as number,
         mode: v['processing.mode'] as AcqParams['mode'],
       }))
-    : Promise.resolve({ meta: null, dark: false, darkStale: false, reference: false, live: false,
+    : Promise.resolve({ meta: null, reconnecting: false, dark: false, darkStale: false, reference: false, live: false,
         integration: 120, averaging: 4, mode: 'intensity' }),
 
   /** Set an acquisition setting; resolves with the value the backend applied
@@ -228,6 +229,26 @@ export const ipc = {
         };
       })
     : noBackend('Capturing'),
+
+  /** `count` captures `intervalMs` apart (start to start), each filed like a
+   *  single capture and named `label`_001… (spectra_NNN when empty). stopLive ends it early. */
+  burst: (args: { count: number; intervalMs: number; label: string; tag: string }, params: AcqParams): Promise<{
+    taken: number; total: number; stopped: boolean; spectrum: Spectrum | null; ids: string[];
+  }> => IS_TAURI
+    ? deviceApi.invoke<{ taken: number; total: number; stopped: boolean; ids: string[]; frame: CaptureResultDTO['frame'] | null }>('burst',
+        { count: args.count, interval_ms: args.intervalMs, label: args.label, tag: args.tag })
+        .then(r => ({ taken: r.taken, total: r.total, stopped: r.stopped, ids: r.ids,
+          spectrum: r.frame ? frameToSpectrum(r.frame, params) : null }))
+    : noBackend('Burst capture'),
+
+  /** Shots done in a burst in flight. */
+  onBurstProgress: (cb: (done: number, total: number) => void): (() => void) => {
+    if (!IS_TAURI) return () => {};
+    let unlisten: (() => void) | null = null;
+    listen<{ done: number; total: number }>('burst-progress', e => cb(e.payload.done, e.payload.total))
+      .then(fn => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  },
 
   /** Scan-by-scan progress of a capture in flight. */
   /** A capture was filed by any caller — the GUI, a script, the CLI or an agent. */
@@ -547,6 +568,27 @@ export const ipc = {
         id: entry.id, session_id: entry.sessionId, action: entry.action,
         actor: entry.actor, timestamp: entry.timestamp, detail: entry.detail,
       }})
+    : Promise.resolve(),
+
+  /** Named settings profiles, kept by the backend in profiles.json. */
+  loadProfiles: (): Promise<Profile[]> => IS_TAURI
+    ? tauriInvoke<Profile[] | null>('cmd_load_store', { name: 'profiles' }).then(p => p ?? [])
+    : Promise.resolve([]),
+  saveProfiles: (profiles: Profile[]): Promise<void> => IS_TAURI
+    ? tauriInvoke('cmd_save_store', { name: 'profiles', value: profiles })
+    : Promise.resolve(),
+
+  /** Recent workspaces and exports, kept by the backend in recent.json. */
+  loadRecent: (): Promise<Recent | null> => IS_TAURI
+    ? tauriInvoke<Recent | null>('cmd_load_store', { name: 'recent' })
+    : Promise.resolve(null),
+  saveRecent: (recent: Recent): Promise<void> => IS_TAURI
+    ? tauriInvoke('cmd_save_store', { name: 'recent', value: recent })
+    : Promise.resolve(),
+
+  /** Show a file in the system file manager. */
+  reveal: (path: string): Promise<void> => IS_TAURI
+    ? tauriInvoke('cmd_reveal', { path })
     : Promise.resolve(),
 
   // ── Tauri event listeners ────────────────────────────────────────────────────
