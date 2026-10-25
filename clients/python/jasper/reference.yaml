@@ -22,7 +22,7 @@ device:
     full_scale_counts: device.info.max_intensity   # all saturation figures are fractions of this
     light_source: none
 
-variables:   # read with jasper_read; this server cannot write
+variables:   # read with jasper_read; jasper_write sets integration_time_ms and averages
   - name: device.state
     description: disconnected, idle, acquiring, or reconnecting (the cable was pulled; the app is waiting for the same unit to come back, then resumes Live if it was on)
   - name: device.info
@@ -77,4 +77,7 @@ usage_notes:
   - Take a new dark after any change to integration time or averaging.
   - Keep the brightest peak below about 85% of full scale.
   - Absorbance needs both a dark and a reference.
-  - This MCP server is read-only. Settings, captures, darks and references are made by a person in the app.
+  - Captures are saved in workspace.active. When it is null, nothing is saved; ask the user to open a workspace.
+  - jasper_invoke capture_dark keeps the last spectrum taken. To take a dark - ask the user to block the light,
+    capture, then capture_dark. Same for a reference with the blank in place.
+  - Connecting, disconnecting, choosing a workspace and firmware upgrades are left to the person in the app.
