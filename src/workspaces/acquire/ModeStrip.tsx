@@ -98,6 +98,13 @@ export function ModeStrip() {
 
       <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', margin: '0 4px' }} />
 
+      {/* Y autoscale; off pins raw counts to the sensor's 0..max_intensity */}
+      <button onClick={() => setParam('lockAxes', !params.lockAxes)} style={chipBtn(!params.lockAxes)}
+        title={params.lockAxes ? `Y axis fixed at 0–${deviceMeta?.maxIntensity ?? 'full scale'} counts; click to autoscale`
+                               : 'Y axis autoscales to the data; click to show the full count range'}>
+        ↕ Autoscale
+      </button>
+
       {/* Stack toggle — color-coded vertical offset of selected spectra */}
       <button onClick={() => setParam('stack', !params.stack)} style={chipBtn(params.stack)}
         title="Stack selected spectra with vertical offset">

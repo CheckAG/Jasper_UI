@@ -65,6 +65,8 @@ export function buildMenus(): Menu[] {
         action: acq.calHeld.reference || acq.liveSpectrum ? () => { acq.toggleCal('reference'); } : undefined,
         hint: 'No spectrum on the plot yet' },
       '-',
+      { label: acq.params.lockAxes ? 'Autoscale Y axis' : 'Full-scale Y axis',
+        action: () => acq.setParam('lockAxes', !acq.params.lockAxes) },
       { label: acq.params.stack ? 'Overlay traces' : 'Stack traces',
         action: () => acq.setParam('stack', !acq.params.stack) },
       { label: ses.selectedIds.length ? 'Hide all captures' : 'Show all captures',

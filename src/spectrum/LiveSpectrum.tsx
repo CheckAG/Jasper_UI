@@ -69,10 +69,11 @@ interface LiveSpectrumProps {
   liveSpectrum?: Spectrum | null; // from acqStore (real stream); null → local fallback
   onCursor?:     (c: CursorState | null) => void;
   paused:        boolean;
+  fullScale?:    number;          // device max_intensity; the y-range when autoscale is off
 }
 
 export function LiveSpectrum({
-  params, captures, liveSpectrum, onCursor, paused,
+  params, captures, liveSpectrum, onCursor, paused, fullScale,
 }: LiveSpectrumProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
@@ -87,6 +88,7 @@ export function LiveSpectrum({
   const capturesRef = useRef(captures); capturesRef.current = captures;
   const liveRef     = useRef(liveSpectrum); liveRef.current  = liveSpectrum ?? null;
   const pausedRef   = useRef(paused);   pausedRef.current   = paused;
+  const fullScaleRef = useRef(fullScale); fullScaleRef.current = fullScale;
   const onCursorRef = useRef(onCursor); onCursorRef.current = onCursor;
   const cursorXRef  = useRef<number | null>(null);
   // Zoom window in data units; null = fit to data. Lives across frames, so the
@@ -214,6 +216,12 @@ export function LiveSpectrum({
           yMin = Math.floor((lo - pad) / step) * step;
           yMax = Math.ceil((hi + pad) / step) * step;
         }
+      }
+      // Autoscale off (lockAxes): raw counts span the sensor's whole range.
+      // Other units have no device-defined range, so they keep autoscaling.
+      const counts = live ? live.units === 'counts' || live.units === 'counts_d' : true;
+      if (params.lockAxes && fullScaleRef.current && counts) {
+        yMin = 0; yMax = fullScaleRef.current;
       }
 
       // The full data extent, before zoom. Pixel ticks and the cursor index

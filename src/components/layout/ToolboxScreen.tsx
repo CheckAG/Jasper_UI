@@ -61,7 +61,7 @@ function PlotBanners() {
 }
 
 export function ToolboxScreen() {
-  const { params, paused, liveSpectrum, setCursor } = useAcqStore();
+  const { params, paused, liveSpectrum, setCursor, deviceMeta } = useAcqStore();
   const { captures, selectedIds } = useSessionStore();
   // Only the user-selected captures are overlaid, so the default view is one clean live trace.
   const overlay = captures.filter(c => selectedIds.includes(c.id));
@@ -91,6 +91,7 @@ export function ToolboxScreen() {
             liveSpectrum={liveSpectrum}
             onCursor={setCursor}
             paused={paused}
+            fullScale={deviceMeta?.maxIntensity}
           />
         </section>
 
