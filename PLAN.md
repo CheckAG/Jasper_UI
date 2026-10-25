@@ -15,7 +15,8 @@ E7b (#10), E7c (#11). See `feature_list.json` for the ledger.
 lamp** · E8 (#13) axis from stored calibration · E9 (#14) CI.
 
 **Settled on hardware** (serial `380B1C3537323731`): the video is inverted — masked pixels read
-high, light pulls the value down — so the host applies `max_intensity - raw`. The same
+high, light pulls the value down. The board now inverts it in hardware (2026-10-25), so the
+host takes raw counts as intensity; it used to apply `max_intensity - raw`. The same
 measurement confirms `DARK=16:28` is a real masked window: it holds the dark level while
 `ACTIVE` responds to light.
 
@@ -115,7 +116,8 @@ so nothing above it changes shape.
   `fields[1] == "TCD1304"`, then `M\n` and cache the parsed metadata.
 - **`scan()`**: push `I<ms>` only when the value changed (keep the existing lazy-push idea from
   `serial.rs:199`), then `A\n`, then read one SPECTRUM with the `3×T+500 ms` timeout.
-- **Samples**: `i16::from_le_bytes`, then **inverted** — `ys[i] = max_intensity - raw[i]`, as
+- **Samples**: `i16::from_le_bytes`, used as-is since the board inverts in hardware (2026-10-25).
+  Previously **inverted** on the host — `ys[i] = max_intensity - raw[i]`, as
   the reference GUI's default-on "Invert" does. Confirmed on serial `380B1C3537323731` with a
   light source, comparing the masked `DARK` window against the illuminated `ACTIVE` window
   **within the same frame**: masked pixels stay pinned near 29300 at every integration time

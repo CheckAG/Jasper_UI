@@ -40,40 +40,12 @@ fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
 }
 
-/// Raw counts to intensity: `max_intensity - raw`.
-///
-/// This video is inverted — a masked pixel reads HIGH and light pulls the value
-/// down — so the host has to flip it, exactly as the PyQt6 reference does with
-/// its default-on "Invert".
-///
-/// Measured 2026-09-06 on serial 380B1C3537323731 with a light source attached.
-/// Within a single frame, the masked DARK window (pixels 16-28, which no light
-/// reaches) against the ACTIVE window minimum:
-///
-/// ```text
-/// integration     DARK mean     ACTIVE min
-///       8 ms         29234          28099
-///      50 ms         29314          20866
-///     200 ms         29308          16100
-/// ```
-///
-/// The masked pixels stay pinned near 29300 whatever the integration time,
-/// while illuminated pixels read lower and fall further the longer the sensor
-/// integrates. Same frame, same conditions, differing only in whether light
-/// lands on them — so dark is high and bright is low.
-///
-/// After inversion a dark pixel is ~3400 and a strongly lit one ~16700, which
-/// is the right way round for display and for the (S-D)/(R-D) maths in
-/// process.rs.
-///
-/// This corrects an earlier reading of an unlit probe, where the whole array
-/// — masked pixels included — sat near 2500 and was taken as evidence that
-/// bright meant high. Masked pixels cannot respond to illumination, so that
-/// difference was never about light; something in the detector's power or
-/// clocking state differed between the two sessions. The within-frame
-/// comparison above does not depend on comparing sessions at all.
-fn to_intensity(raw: i16, max_intensity: i32) -> f32 {
-    (max_intensity - raw as i32) as f32
+/// Raw counts to intensity. The board inverts the CCD video in hardware, so a
+/// masked pixel already reads LOW and light pushes the value up: no host-side
+/// flip. (The bare sensor output is inverted — masked pixels near 29300, lit
+/// ones lower — and this used to return `max_intensity - raw` to undo that.)
+fn to_intensity(raw: i16) -> f32 {
+    raw as f32
 }
 
 /// Saturation is judged on the raw sample: at or past `max_intensity`, or
@@ -477,20 +449,27 @@ impl SpectrumDriver for Tcd1304Driver {
             let samples = io.acquire(applied)?;
             let max_intensity = io.meta.max_intensity;
 
+            // Only the effective pixels (datasheet: 16 dummy, 13 light-shielded,
+            // 3 dummy, 3648 effective, 14 dummy). The window comes from the
+            // device's ACTIVE metadata, clamped in case it overruns the frame.
+            let (first, last) = io.meta.active;
+            let last = last.min(samples.len().saturating_sub(1));
+            let samples = samples.get(first..=last).ok_or("ACTIVE window outside the frame")?;
+
             let ys: Vec<f32> = samples
                 .iter()
-                .map(|&raw| to_intensity(raw, max_intensity))
+                .map(|&raw| to_intensity(raw))
                 .collect();
 
-            // Peak on the inverted scale against the device's full scale. A raw
+            // Peak against the device's full scale. A raw
             // sample at the ADC limit counts as saturated whatever the scale says.
             let peak = if samples.iter().any(|&raw| is_saturated(raw, max_intensity)) { 1.0 }
                 else { ys.iter().cloned().fold(0.0, f32::max) / max_intensity.max(1) as f32 };
 
             Ok(SpectrumFrame {
-                // Pixel index until a wavelength calibration exists (E5). Honest
-                // beats a fabricated nm axis.
-                xs: (0..ys.len()).map(|i| i as f32).collect(),
+                // Sensor pixel index (32..=3679) until a wavelength calibration
+                // exists (E5). Honest beats a fabricated nm axis.
+                xs: (first..=last).map(|i| i as f32).collect(),
                 ys,
                 mode: params.mode.clone(),
                 units: "counts".to_string(),

@@ -83,17 +83,17 @@ def build_frame(type_, payload=b"", seq=0, integ_ms=10, status=0):
     return head + struct.pack("<H", crc16_ccitt(head))
 
 
-# Masked-pixel dark level. This video is inverted: an unilluminated pixel reads
-# HIGH and light pulls the value down. Measured on the real board — the masked
-# DARK window sits near 29300 whatever the integration time.
-DARK_LEVEL = 29300
+# Masked-pixel dark level. The board inverts the CCD video in hardware, so an
+# unilluminated pixel reads LOW and light pushes the value up. 32767 - 29300,
+# the masked level the bare sensor showed before the hardware inversion.
+DARK_LEVEL = 3467
 dlo, dhi = 16, 28   # the masked DARK window this sim advertises in METADATA
 
 
 def spectrum(scene, integ_ms, tick):
     """Raw counts as the device sends them: signed 16-bit little-endian.
 
-    Inverted video, so a scene builds by SUBTRACTING signal from DARK_LEVEL.
+    Hardware-inverted video, so a scene builds by ADDING signal to DARK_LEVEL.
     The DARK window (pixels 16-28) is masked on the real sensor, so it is left
     at the dark level here no matter what the scene does — that is what makes
     it usable as a dark reference, and what the host checks against.
@@ -109,7 +109,7 @@ def spectrum(scene, integ_ms, tick):
             width = 3.0
             lo, hi = max(0, int(centre - 6 * width)), min(PIXELS, int(centre + 6 * width))
             for i in range(lo, hi):
-                ys[i] -= amp * math.exp(-0.5 * ((i - centre) / width) ** 2)
+                ys[i] += amp * math.exp(-0.5 * ((i - centre) / width) ** 2)
 
     if scene == "saturated":
         # PROTOCOL.md: a saturated pixel rolls past 0x7FFF and reads negative.

@@ -259,7 +259,7 @@ mod tests {
             \x20   print(name, len(frame['ys']))\n");
         let out = std::process::Command::new("python3").args(["-c", &script])
             .current_dir(format!("{root}/../clients/python")).output().unwrap();
-        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "spectrum-frame 3694", "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "spectrum-frame 3648", "{}", String::from_utf8_lossy(&out.stderr));
 
         let log = std::fs::read_to_string(&state.audit_path).unwrap();
         assert!(log.lines().any(|l| l.contains("\"caller\":\"cli\"") && l.contains("\"command\":\"capture\"")), "{log}");

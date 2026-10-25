@@ -143,20 +143,19 @@ fn handshake_and_capture_against_the_simulator() {
     let samples = first.samples().expect("spectrum samples");
     assert_eq!(samples.len(), PIXELS);
 
-    // Raw counts, before the host inverts them. The video is inverted: masked
-    // pixels read high and light pulls the value down, so an emission line is a
-    // DIP. Checked in-frame, masked window against the illuminated one — the
-    // same comparison that settled this on real hardware.
+    // Raw counts. The board inverts the video in hardware, so masked pixels
+    // read low and an emission line is a PEAK. Checked in-frame, masked window
+    // against the illuminated one.
     let dark_window: i32 =
         samples[16..=28].iter().map(|&v| v as i32).sum::<i32>() / 13;
-    let brightest = *samples[32..3680].iter().min().unwrap() as i32;
+    let brightest = *samples[32..3680].iter().max().unwrap() as i32;
     assert!(
-        dark_window > 20_000,
+        dark_window < 10_000,
         "masked pixels should sit near the dark level, got {dark_window}"
     );
     assert!(
-        brightest < dark_window - 2_000,
-        "an emission line should read well BELOW the dark level: line {brightest} vs dark {dark_window}"
+        brightest > dark_window + 2_000,
+        "an emission line should read well ABOVE the dark level: line {brightest} vs dark {dark_window}"
     );
 
     // Each capture discards the in-progress frame, so seq advances by at least 2.
@@ -242,17 +241,20 @@ fn driver_handshakes_and_scans() {
     assert_eq!(meta.sensor, "TCD1304AP");
 
     let frame = drv.scan(&params(25)).expect("scan");
-    assert_eq!(frame.ys.len(), PIXELS);
-    assert_eq!(frame.xs.len(), PIXELS);
+    // Only the 3648 effective pixels, indexed by their sensor position
+    // (32..=3679) until a wavelength calibration exists (E5).
+    assert_eq!(frame.ys.len(), 3648);
+    assert_eq!(frame.xs.len(), 3648);
     assert_eq!(frame.units, "counts");
-    // xs is the pixel index until a wavelength calibration exists (E5).
-    assert_eq!(frame.xs[0], 0.0);
-    assert_eq!(frame.xs[PIXELS - 1], (PIXELS - 1) as f32);
-    // ys is inverted (max_intensity - raw), so a line is now a peak above a
-    // small dark baseline rather than a dip below a large one.
-    let baseline = frame.ys[16..=28].iter().sum::<f32>() / 13.0;
-    let peak = frame.ys[32..3680].iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    assert!(baseline > 0.0, "dark baseline should be positive after inversion, got {baseline}");
+    assert_eq!(frame.xs[0], 32.0);
+    assert_eq!(frame.xs[3647], 3679.0);
+    // ys is the raw count (the board inverts in hardware), so a line is a peak
+    // above a small dark baseline.
+    // The masked pixels are no longer in the frame, so the dimmest effective
+    // pixel stands in for the dark baseline.
+    let baseline = frame.ys.iter().cloned().fold(f32::INFINITY, f32::min);
+    let peak = frame.ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    assert!(baseline > 0.0, "dark baseline should be positive, got {baseline}");
     assert!(
         peak > baseline + 2_000.0,
         "an emission line should stand well above the dark baseline: peak {peak} vs baseline {baseline}"
@@ -282,7 +284,7 @@ fn driver_reports_the_clamped_integration_the_device_applied() {
     // 3 ms is below the device floor; the scan must still succeed, using the
     // clamped value the ACK reported rather than what was asked for.
     let frame = drv.scan(&params(3)).expect("scan below the floor still works");
-    assert_eq!(frame.ys.len(), PIXELS);
+    assert_eq!(frame.ys.len(), 3648);
 }
 
 #[test]
@@ -392,7 +394,7 @@ fn real_hardware_handshake_and_capture() {
         let frame = drv.scan(&params(requested)).expect("scan");
         let elapsed = started.elapsed();
 
-        assert_eq!(frame.ys.len(), PIXELS);
+        assert_eq!(frame.ys.len(), 3648, "only the effective pixels");
         assert_eq!(frame.units, "counts");
         let min = frame.ys.iter().cloned().fold(f32::INFINITY, f32::min);
         let max = frame.ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
@@ -404,14 +406,12 @@ fn real_hardware_handshake_and_capture() {
         // A frame that is all one value means the link is echoing, not sensing.
         assert!(max > min, "spectrum is flat — no signal reached the host");
 
-        // Polarity evidence, in-frame: pixels 16-28 are masked on this sensor,
-        // so they see no light whatever the scene. After inversion they are the
-        // dark baseline and anything illuminated should sit above them. Printed
-        // rather than asserted, because with the lamp off there is nothing to
-        // rise above and that is not a failure.
-        let masked = frame.ys[16..=28].iter().sum::<f32>() / 13.0;
-        let lit = frame.ys[32..3680].iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        println!("       masked (dark) {masked:8.0}   brightest {lit:8.0}   signal {:+.0}", lit - masked);
+        // Polarity evidence: with the lamp on, lit pixels should rise well
+        // above the dimmest one. The masked pixels are no longer in the frame;
+        // handshake_and_capture_against_the_simulator checks them on raw
+        // samples. Printed rather than asserted, because with the lamp off there
+        // is nothing to rise above and that is not a failure.
+        println!("       dimmest {min:8.0}   brightest {max:8.0}   signal {:+.0}", max - min);
     }
 
     let after = drv.device_metadata().unwrap();
